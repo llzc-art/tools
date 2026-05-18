@@ -1,0 +1,20 @@
+server:
+  port: 8080
+  read_timeout: 10
+  write_timeout: 10
+
+database:
+  path: "./data/tools.db"
+
+log:
+  level: "info"
+  filename: "./logs/tools.log"
+  max_size: 100
+  max_backups: 10
+  max_age: 30
+  compress: true
+  format: "json"
+
+llm:
+  chat_timeout: 3600      # 非流式对话超时（秒）
+  stream_timeout: 3600    # 流式对话超时（秒）
