@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
+
+	"github.com/tjfoc/gmsm/sm3"
 )
 
 type HashService struct{}
@@ -53,5 +55,14 @@ func (s *HashService) SHA512(input string) *HashResult {
 		Input:  input,
 		Output: hex.EncodeToString(h[:]),
 		Algo:   "sha512",
+	}
+}
+
+func (s *HashService) SM3(input string) *HashResult {
+	h := sm3.Sm3Sum([]byte(input))
+	return &HashResult{
+		Input:  input,
+		Output: hex.EncodeToString(h[:]),
+		Algo:   "sm3",
 	}
 }

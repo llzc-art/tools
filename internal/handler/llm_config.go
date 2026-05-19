@@ -12,15 +12,44 @@ import (
 // LLM 配置 CRUD
 
 type llmConfigReq struct {
-	ID          int64   `json:"id"`
-	Name        string  `json:"name"`
-	BaseURL     string  `json:"base_url"`
-	APIKey      string  `json:"api_key"`
-	Model       string  `json:"model"`
-	Temperature float64 `json:"temperature"`
-	MaxTokens   int     `json:"max_tokens"`
-	Stream      bool    `json:"stream"`
-	IsDefault   bool    `json:"is_default"`
+	ID               int64   `json:"id"`
+	Name             string  `json:"name"`
+	BaseURL          string  `json:"base_url"`
+	APIKey           string  `json:"api_key"`
+	Model            string  `json:"model"`
+	Temperature      float64 `json:"temperature"`
+	TopP             float64 `json:"top_p"`
+	MaxTokens        int     `json:"max_tokens"`
+	Stream           bool    `json:"stream"`
+	PresencePenalty  float64 `json:"presence_penalty"`
+	FrequencyPenalty float64 `json:"frequency_penalty"`
+	ResponseFormat   string  `json:"response_format"`
+	Stop             []string `json:"stop"`
+	IsDefault        bool    `json:"is_default"`
+}
+
+func toLLMConfig(req *llmConfigReq) *database.LLMConfig {
+	stopJSON := ""
+	if len(req.Stop) > 0 {
+		b, _ := json.Marshal(req.Stop)
+		stopJSON = string(b)
+	}
+	return &database.LLMConfig{
+		ID:               req.ID,
+		Name:             req.Name,
+		BaseURL:          req.BaseURL,
+		APIKey:           req.APIKey,
+		Model:            req.Model,
+		Temperature:      req.Temperature,
+		TopP:             req.TopP,
+		MaxTokens:        req.MaxTokens,
+		Stream:           req.Stream,
+		PresencePenalty:  req.PresencePenalty,
+		FrequencyPenalty: req.FrequencyPenalty,
+		ResponseFormat:   req.ResponseFormat,
+		Stop:             stopJSON,
+		IsDefault:        req.IsDefault,
+	}
 }
 
 // LLMConfigList 获取所有 LLM 配置
@@ -83,16 +112,7 @@ func LLMConfigCreate(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	c := &database.LLMConfig{
-		Name:        req.Name,
-		BaseURL:     req.BaseURL,
-		APIKey:      req.APIKey,
-		Model:       req.Model,
-		Temperature: req.Temperature,
-		MaxTokens:   req.MaxTokens,
-		Stream:      req.Stream,
-		IsDefault:   req.IsDefault,
-	}
+	c := toLLMConfig(&req)
 	if err := database.CreateLLMConfig(c); err != nil {
 		logger.Errorc("LLMConfigCreate", "创建失败: "+err.Error())
 		response.Error(ctx, 5000, "创建失败")
@@ -113,17 +133,7 @@ func LLMConfigUpdate(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	c := &database.LLMConfig{
-		ID:          req.ID,
-		Name:        req.Name,
-		BaseURL:     req.BaseURL,
-		APIKey:      req.APIKey,
-		Model:       req.Model,
-		Temperature: req.Temperature,
-		MaxTokens:   req.MaxTokens,
-		Stream:      req.Stream,
-		IsDefault:   req.IsDefault,
-	}
+	c := toLLMConfig(&req)
 	if err := database.UpdateLLMConfig(c); err != nil {
 		logger.Errorc("LLMConfigUpdate", "更新失败: "+err.Error())
 		response.Error(ctx, 5000, "更新失败")
@@ -193,8 +203,8 @@ func LLMMessagesGet(ctx *fasthttp.RequestCtx) {
 // LLMMessagesSave 保存消息列表
 func LLMMessagesSave(ctx *fasthttp.RequestCtx) {
 	var req struct {
-		ConfigID int64                   `json:"config_id"`
-		Messages []database.LLMMessage   `json:"messages"`
+		ConfigID int64                 `json:"config_id"`
+		Messages []database.LLMMessage  `json:"messages"`
 	}
 	if err := json.Unmarshal(ctx.PostBody(), &req); err != nil {
 		response.Error(ctx, 1001, "参数错误")

@@ -9,17 +9,22 @@ import (
 
 // LLMConfig LLM 配置模型
 type LLMConfig struct {
-	ID          int64   `json:"id"`
-	Name        string  `json:"name"`
-	BaseURL     string  `json:"base_url"`
-	APIKey      string  `json:"api_key"`
-	Model       string  `json:"model"`
-	Temperature float64 `json:"temperature"`
-	MaxTokens   int     `json:"max_tokens"`
-	Stream      bool    `json:"stream"`
-	IsDefault   bool    `json:"is_default"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	ID               int64   `json:"id"`
+	Name             string  `json:"name"`
+	BaseURL          string  `json:"base_url"`
+	APIKey           string  `json:"api_key"`
+	Model            string  `json:"model"`
+	Temperature      float64 `json:"temperature"`
+	TopP             float64 `json:"top_p"`
+	MaxTokens        int     `json:"max_tokens"`
+	Stream           bool    `json:"stream"`
+	PresencePenalty  float64 `json:"presence_penalty"`
+	FrequencyPenalty float64 `json:"frequency_penalty"`
+	ResponseFormat   string  `json:"response_format"`
+	Stop             string  `json:"stop"` // JSON 数组字符串
+	IsDefault        bool    `json:"is_default"`
+	CreatedAt        string  `json:"created_at"`
+	UpdatedAt        string  `json:"updated_at"`
 }
 
 // LLMMessage LLM 对话消息
@@ -28,11 +33,26 @@ type LLMMessage struct {
 	ConfigID int64  `json:"config_id"`
 	Role     string `json:"role"`
 	Content  string `json:"content"`
+	Meta     string `json:"meta,omitempty"` // JSON: {finishReason, model, usage}
+}
+
+const llmConfigColumns = "id, name, base_url, api_key, model, temperature, top_p, max_tokens, stream, presence_penalty, frequency_penalty, response_format, stop, is_default, created_at, updated_at"
+
+func scanLLMConfig(row interface{ Scan(...interface{}) error }) (*LLMConfig, error) {
+	var c LLMConfig
+	var stream, isDefault int
+	err := row.Scan(&c.ID, &c.Name, &c.BaseURL, &c.APIKey, &c.Model, &c.Temperature, &c.TopP, &c.MaxTokens, &stream, &c.PresencePenalty, &c.FrequencyPenalty, &c.ResponseFormat, &c.Stop, &isDefault, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	c.Stream = stream == 1
+	c.IsDefault = isDefault == 1
+	return &c, nil
 }
 
 // ListLLMConfigs 获取所有 LLM 配置
 func ListLLMConfigs() ([]LLMConfig, error) {
-	rows, err := DB.Query("SELECT id, name, base_url, api_key, model, temperature, max_tokens, stream, is_default, created_at, updated_at FROM llm_config ORDER BY id")
+	rows, err := DB.Query("SELECT " + llmConfigColumns + " FROM llm_config ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -40,50 +60,37 @@ func ListLLMConfigs() ([]LLMConfig, error) {
 
 	var configs []LLMConfig
 	for rows.Next() {
-		var c LLMConfig
-		var stream, isDefault int
-		if err := rows.Scan(&c.ID, &c.Name, &c.BaseURL, &c.APIKey, &c.Model, &c.Temperature, &c.MaxTokens, &stream, &isDefault, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		c, err := scanLLMConfig(rows)
+		if err != nil {
 			return nil, err
 		}
-		c.Stream = stream == 1
-		c.IsDefault = isDefault == 1
-		configs = append(configs, c)
+		configs = append(configs, *c)
 	}
 	return configs, nil
 }
 
 // GetLLMConfig 获取单个 LLM 配置
 func GetLLMConfig(id int64) (*LLMConfig, error) {
-	var c LLMConfig
-	var stream, isDefault int
-	err := DB.QueryRow("SELECT id, name, base_url, api_key, model, temperature, max_tokens, stream, is_default, created_at, updated_at FROM llm_config WHERE id = ?", id).
-		Scan(&c.ID, &c.Name, &c.BaseURL, &c.APIKey, &c.Model, &c.Temperature, &c.MaxTokens, &stream, &isDefault, &c.CreatedAt, &c.UpdatedAt)
+	c, err := scanLLMConfig(DB.QueryRow("SELECT "+llmConfigColumns+" FROM llm_config WHERE id = ?", id))
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	c.Stream = stream == 1
-	c.IsDefault = isDefault == 1
-	return &c, nil
+	return c, nil
 }
 
 // GetDefaultLLMConfig 获取默认 LLM 配置
 func GetDefaultLLMConfig() (*LLMConfig, error) {
-	var c LLMConfig
-	var stream, isDefault int
-	err := DB.QueryRow("SELECT id, name, base_url, api_key, model, temperature, max_tokens, stream, is_default, created_at, updated_at FROM llm_config WHERE is_default = 1 LIMIT 1").
-		Scan(&c.ID, &c.Name, &c.BaseURL, &c.APIKey, &c.Model, &c.Temperature, &c.MaxTokens, &stream, &isDefault, &c.CreatedAt, &c.UpdatedAt)
+	c, err := scanLLMConfig(DB.QueryRow("SELECT "+llmConfigColumns+" FROM llm_config WHERE is_default = 1 LIMIT 1"))
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	c.Stream = stream == 1
-	c.IsDefault = isDefault == 1
-	return &c, nil
+	return c, nil
 }
 
 // CreateLLMConfig 创建 LLM 配置
@@ -98,8 +105,8 @@ func CreateLLMConfig(c *LLMConfig) error {
 	}
 	now := time.Now().Format("2006-01-02 15:04:05")
 	result, err := DB.Exec(
-		"INSERT INTO llm_config (name, base_url, api_key, model, temperature, max_tokens, stream, is_default, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		c.Name, c.BaseURL, c.APIKey, c.Model, c.Temperature, c.MaxTokens, stream, isDefault, now, now,
+		"INSERT INTO llm_config (name, base_url, api_key, model, temperature, top_p, max_tokens, stream, presence_penalty, frequency_penalty, response_format, stop, is_default, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		c.Name, c.BaseURL, c.APIKey, c.Model, c.Temperature, c.TopP, c.MaxTokens, stream, c.PresencePenalty, c.FrequencyPenalty, c.ResponseFormat, c.Stop, isDefault, now, now,
 	)
 	if err != nil {
 		return err
@@ -122,8 +129,8 @@ func UpdateLLMConfig(c *LLMConfig) error {
 	}
 	now := time.Now().Format("2006-01-02 15:04:05")
 	_, err := DB.Exec(
-		"UPDATE llm_config SET name=?, base_url=?, api_key=?, model=?, temperature=?, max_tokens=?, stream=?, is_default=?, updated_at=? WHERE id=?",
-		c.Name, c.BaseURL, c.APIKey, c.Model, c.Temperature, c.MaxTokens, stream, isDefault, now, c.ID,
+		"UPDATE llm_config SET name=?, base_url=?, api_key=?, model=?, temperature=?, top_p=?, max_tokens=?, stream=?, presence_penalty=?, frequency_penalty=?, response_format=?, stop=?, is_default=?, updated_at=? WHERE id=?",
+		c.Name, c.BaseURL, c.APIKey, c.Model, c.Temperature, c.TopP, c.MaxTokens, stream, c.PresencePenalty, c.FrequencyPenalty, c.ResponseFormat, c.Stop, isDefault, now, c.ID,
 	)
 	return err
 }
@@ -159,7 +166,7 @@ func SetDefaultLLMConfig(id int64) error {
 
 // ListLLMMessages 获取某个配置的消息列表
 func ListLLMMessages(configID int64) ([]LLMMessage, error) {
-	rows, err := DB.Query("SELECT id, config_id, role, content FROM llm_message WHERE config_id = ? ORDER BY id", configID)
+	rows, err := DB.Query("SELECT id, config_id, role, content, meta FROM llm_message WHERE config_id = ? ORDER BY id", configID)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +175,7 @@ func ListLLMMessages(configID int64) ([]LLMMessage, error) {
 	var msgs []LLMMessage
 	for rows.Next() {
 		var m LLMMessage
-		if err := rows.Scan(&m.ID, &m.ConfigID, &m.Role, &m.Content); err != nil {
+		if err := rows.Scan(&m.ID, &m.ConfigID, &m.Role, &m.Content, &m.Meta); err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -187,7 +194,14 @@ func SaveLLMMessages(configID int64, messages []LLMMessage) error {
 	tx.Exec("DELETE FROM llm_message WHERE config_id = ?", configID)
 
 	for _, m := range messages {
-		tx.Exec("INSERT INTO llm_message (config_id, role, content) VALUES (?, ?, ?)", configID, m.Role, m.Content)
+		meta := m.Meta
+		if meta == "" {
+			// 将 meta 对象序列化为 JSON
+			if m.Meta != "" {
+				meta = m.Meta
+			}
+		}
+		tx.Exec("INSERT INTO llm_message (config_id, role, content, meta) VALUES (?, ?, ?, ?)", configID, m.Role, m.Content, meta)
 	}
 	return tx.Commit()
 }

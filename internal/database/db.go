@@ -72,6 +72,20 @@ func createTables() error {
 			return err
 		}
 	}
+
+	// 增量迁移：添加新字段（ALTER TABLE ADD COLUMN 对已存在的列会报错，忽略即可）
+	migrations := []string{
+		`ALTER TABLE llm_config ADD COLUMN top_p REAL NOT NULL DEFAULT 1.0`,
+		`ALTER TABLE llm_config ADD COLUMN presence_penalty REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE llm_config ADD COLUMN frequency_penalty REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE llm_config ADD COLUMN response_format TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE llm_config ADD COLUMN stop TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE llm_message ADD COLUMN meta TEXT NOT NULL DEFAULT ''`,
+	}
+	for _, m := range migrations {
+		DB.Exec(m) // 忽略"列已存在"错误
+	}
+
 	return nil
 }
 

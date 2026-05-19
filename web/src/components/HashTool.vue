@@ -58,6 +58,7 @@ const algos = [
   { id: 'sha1', name: 'SHA-1', icon: '🔐' },
   { id: 'sha256', name: 'SHA-256', icon: '🛡️' },
   { id: 'sha512', name: 'SHA-512', icon: '🔒' },
+  { id: 'sm3', name: 'SM3', icon: '🇨🇳' },
 ]
 
 const currentAlgoName = computed(() => {

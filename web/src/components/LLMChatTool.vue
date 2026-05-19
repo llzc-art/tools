@@ -57,8 +57,37 @@
             <input v-model.number="config.temperature" type="range" min="0" max="2" step="0.1" class="range-input" />
           </div>
           <div class="form-group half">
+            <label>Top P ({{ config.topP }})</label>
+            <input v-model.number="config.topP" type="range" min="0" max="1" step="0.05" class="range-input" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
             <label>最大 Tokens</label>
             <input v-model.number="config.maxTokens" type="number" class="input-text" placeholder="4096" min="1" max="128000" />
+          </div>
+          <div class="form-group half">
+            <label>重复惩罚 ({{ config.frequencyPenalty }})</label>
+            <input v-model.number="config.frequencyPenalty" type="range" min="-2" max="2" step="0.1" class="range-input" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
+            <label>存在惩罚 ({{ config.presencePenalty }})</label>
+            <input v-model.number="config.presencePenalty" type="range" min="-2" max="2" step="0.1" class="range-input" />
+          </div>
+          <div class="form-group half">
+            <label>停止序列</label>
+            <input v-model="stopStr" type="text" class="input-text" placeholder="逗号分隔，如: ###,END" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
+            <label>响应格式</label>
+            <select v-model="config.responseFormat" class="input-text">
+              <option value="">默认 (text)</option>
+              <option value="json_object">JSON Object</option>
+            </select>
           </div>
         </div>
       </div>
@@ -81,6 +110,16 @@
               <span class="loading-dot"></span>
               <span class="loading-dot"></span>
             </div>
+            <!-- 元信息：finish_reason / usage -->
+            <div v-if="msg.meta" class="message-meta">
+              <span v-if="msg.meta.finishReason" class="meta-tag" :class="'meta-' + msg.meta.finishReason">
+                {{ finishReasonLabel(msg.meta.finishReason) }}
+              </span>
+              <span v-if="msg.meta.model" class="meta-tag meta-model">{{ msg.meta.model }}</span>
+              <span v-if="msg.meta.usage" class="meta-tag meta-usage">
+                {{ msg.meta.usage.prompt_tokens }}→{{ msg.meta.usage.completion_tokens }} / {{ msg.meta.usage.total_tokens }} tokens
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -100,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, nextTick, onMounted, watch, inject, computed } from 'vue'
+import { ref, reactive, nextTick, onMounted, computed, inject } from 'vue'
 import { Marked } from 'marked'
 import hljs from 'highlight.js'
 import { apiPost } from '../api.js'
@@ -110,9 +149,9 @@ const showConfirm = inject('showConfirm')
 // Markdown 渲染器配置
 const marked = new Marked({
   renderer: {
-    code(code, lang) {
+    code({ text, lang }) {
       const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext'
-      const highlighted = hljs.highlight(code, { language }).value
+      const highlighted = hljs.highlight(text, { language }).value
       return `<div class="code-block"><div class="code-header"><span class="code-lang">${language}</span><button class="code-copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.textContent)">复制</button></div><pre><code class="hljs language-${language}">${highlighted}</code></pre></div>`
     }
   }
@@ -124,9 +163,15 @@ const config = reactive({
   model: '',
   apiKey: '',
   temperature: 0.7,
+  topP: 1.0,
   maxTokens: 4096,
   stream: true,
+  presencePenalty: 0,
+  frequencyPenalty: 0,
+  responseFormat: '',
 })
+
+const stopStr = ref('')
 
 const configList = ref([])
 const activeConfigId = ref('')
@@ -142,6 +187,16 @@ const currentConfigName = computed(() => {
   const c = configList.value.find(c => String(c.id) === activeConfigId.value)
   return c ? (c.name || c.model || '未命名') : ''
 })
+
+function finishReasonLabel(reason) {
+  const map = {
+    stop: '正常结束',
+    length: '达到长度限制',
+    content_filter: '内容过滤',
+    tool_calls: '工具调用',
+  }
+  return map[reason] || reason
+}
 
 // 从后端加载配置列表
 async function loadConfigList() {
@@ -168,8 +223,8 @@ async function loadDefaultConfig() {
 // 切换配置时加载
 async function loadConfig() {
   if (!activeConfigId.value) {
-    // 新建模式 - 重置表单
-    Object.assign(config, { name: '', baseUrl: '', model: '', apiKey: '', temperature: 0.7, maxTokens: 4096, stream: true })
+    Object.assign(config, { name: '', baseUrl: '', model: '', apiKey: '', temperature: 0.7, topP: 1.0, maxTokens: 4096, stream: true, presencePenalty: 0, frequencyPenalty: 0, responseFormat: '' })
+    stopStr.value = ''
     messages.value = []
     return
   }
@@ -188,8 +243,13 @@ function applyConfigToForm(c) {
   config.model = c.model || ''
   config.apiKey = c.api_key || ''
   config.temperature = c.temperature ?? 0.7
+  config.topP = c.top_p ?? 1.0
   config.maxTokens = c.max_tokens ?? 4096
   config.stream = c.stream !== false
+  config.presencePenalty = c.presence_penalty ?? 0
+  config.frequencyPenalty = c.frequency_penalty ?? 0
+  config.responseFormat = c.response_format || ''
+  stopStr.value = (c.stop || []).join(', ')
 }
 
 // 保存当前配置到后端
@@ -199,32 +259,28 @@ async function saveCurrentConfig() {
     return
   }
 
+  const payload = {
+    name: config.name,
+    base_url: config.baseUrl,
+    api_key: config.apiKey,
+    model: config.model,
+    temperature: config.temperature,
+    top_p: config.topP,
+    max_tokens: config.maxTokens,
+    stream: config.stream,
+    presence_penalty: config.presencePenalty,
+    frequency_penalty: config.frequencyPenalty,
+    response_format: config.responseFormat || null,
+    stop: stopStr.value ? stopStr.value.split(',').map(s => s.trim()).filter(Boolean) : [],
+    is_default: true,
+  }
+
   try {
     if (activeConfigId.value) {
-      // 更新已有配置
-      await apiPost('/api/llm/config/update', {
-        id: Number(activeConfigId.value),
-        name: config.name,
-        base_url: config.baseUrl,
-        api_key: config.apiKey,
-        model: config.model,
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-        stream: config.stream,
-        is_default: true,
-      })
+      payload.id = Number(activeConfigId.value)
+      await apiPost('/api/llm/config/update', payload)
     } else {
-      // 新建配置
-      const res = await apiPost('/api/llm/config/create', {
-        name: config.name || config.model,
-        base_url: config.baseUrl,
-        api_key: config.apiKey,
-        model: config.model,
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-        stream: config.stream,
-        is_default: true,
-      })
+      const res = await apiPost('/api/llm/config/create', { ...payload, name: config.name || config.model })
       if (res.code === 0 && res.data) {
         activeConfigId.value = String(res.data.id)
         await apiPost('/api/llm/config/set-default', { id: res.data.id })
@@ -257,7 +313,7 @@ async function loadMessages() {
   try {
     const res = await apiPost('/api/llm/messages/get', { config_id: Number(activeConfigId.value) })
     if (res.code === 0) {
-      messages.value = (res.data || []).map(m => ({ role: m.role, content: m.content }))
+      messages.value = (res.data || []).map(m => ({ role: m.role, content: m.content, meta: m.meta || null }))
     }
   } catch {}
 }
@@ -268,7 +324,7 @@ async function saveMessages() {
   try {
     await apiPost('/api/llm/messages/save', {
       config_id: Number(activeConfigId.value),
-      messages: messages.value.map(m => ({ role: m.role, content: m.content })),
+      messages: messages.value.map(m => ({ role: m.role, content: m.content, meta: m.meta || null })),
     })
   } catch {}
 }
@@ -316,6 +372,25 @@ function handleKeydown(e) {
   }
 }
 
+function buildRequestPayload() {
+  const stop = stopStr.value ? stopStr.value.split(',').map(s => s.trim()).filter(Boolean) : undefined
+  const responseFormat = config.responseFormat ? { type: config.responseFormat } : undefined
+  return {
+    base_url: config.baseUrl,
+    api_key: config.apiKey,
+    model: config.model,
+    messages: messages.value.filter(m => !m.loading).map(m => ({ role: m.role, content: m.content })),
+    stream: config.stream,
+    max_tokens: config.maxTokens,
+    temperature: config.temperature,
+    top_p: config.topP,
+    presence_penalty: config.presencePenalty,
+    frequency_penalty: config.frequencyPenalty,
+    stop: stop && stop.length > 0 ? stop : undefined,
+    response_format: responseFormat,
+  }
+}
+
 async function sendMessage() {
   const text = inputText.value.trim()
   if (!text || loading.value) return
@@ -338,7 +413,7 @@ async function sendMessage() {
   scrollToBottom()
 
   // 添加助手占位消息
-  const assistantMsg = reactive({ role: 'assistant', content: '', loading: true })
+  const assistantMsg = reactive({ role: 'assistant', content: '', loading: true, meta: null })
   messages.value.push(assistantMsg)
   loading.value = true
   scrollToBottom()
@@ -361,40 +436,44 @@ async function sendMessage() {
 }
 
 async function sendNormalRequest(assistantMsg) {
+  const payload = buildRequestPayload()
+  payload.stream = false
+
   const resp = await fetch('/api/llm/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      base_url: config.baseUrl,
-      api_key: config.apiKey,
-      model: config.model,
-      messages: messages.value.filter(m => !m.loading).map(m => ({ role: m.role, content: m.content })),
-      stream: false,
-      max_tokens: config.maxTokens,
-      temperature: config.temperature,
-    }),
+    body: JSON.stringify(payload),
   })
 
   const data = await resp.json()
   if (data.code !== 0) {
     throw new Error(data.message)
   }
-  assistantMsg.content = data.data.content || ''
+
+  const chatResp = data.data
+  // 提取第一个 choice 的内容
+  if (chatResp.choices && chatResp.choices.length > 0) {
+    const choice = chatResp.choices[0]
+    assistantMsg.content = choice.message?.content || ''
+    assistantMsg.meta = {
+      finishReason: choice.finish_reason || null,
+      model: chatResp.model || null,
+      usage: chatResp.usage || null,
+    }
+  } else if (chatResp.content) {
+    // 兼容旧格式
+    assistantMsg.content = chatResp.content
+  }
 }
 
 async function sendStreamRequest(assistantMsg) {
+  const payload = buildRequestPayload()
+  payload.stream = true
+
   const resp = await fetch('/api/llm/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      base_url: config.baseUrl,
-      api_key: config.apiKey,
-      model: config.model,
-      messages: messages.value.filter(m => !m.loading).map(m => ({ role: m.role, content: m.content })),
-      stream: true,
-      max_tokens: config.maxTokens,
-      temperature: config.temperature,
-    }),
+    body: JSON.stringify(payload),
   })
 
   if (!resp.ok) {
@@ -404,6 +483,8 @@ async function sendStreamRequest(assistantMsg) {
   const reader = resp.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let lastFinishReason = null
+  let lastModel = null
 
   while (true) {
     const { done, value } = await reader.read()
@@ -423,13 +504,39 @@ async function sendStreamRequest(assistantMsg) {
 
       try {
         const chunk = JSON.parse(data)
-        if (chunk.content) {
-          assistantMsg.content += chunk.content
-          scrollToBottom()
+
+        // 检查是否是错误事件
+        if (chunk.error) {
+          throw new Error(chunk.error.message || 'API 错误')
         }
-        if (chunk.finish) break
-      } catch {}
+
+        // 提取 choices[0] 内容
+        if (chunk.choices && chunk.choices.length > 0) {
+          const choice = chunk.choices[0]
+          if (choice.delta?.content) {
+            assistantMsg.content += choice.delta.content
+            scrollToBottom()
+          }
+          if (choice.finish_reason) {
+            lastFinishReason = choice.finish_reason
+          }
+        }
+
+        // 提取 model
+        if (chunk.model) {
+          lastModel = chunk.model
+        }
+      } catch (e) {
+        if (e.message && !e.message.includes('JSON')) throw e
+      }
     }
+  }
+
+  // 设置元信息
+  assistantMsg.meta = {
+    finishReason: lastFinishReason,
+    model: lastModel,
+    usage: null, // 流式模式通常无 usage
   }
 }
 </script>
@@ -587,6 +694,47 @@ async function sendStreamRequest(assistantMsg) {
   line-height: 1.6;
   word-break: break-word;
 }
+
+/* 元信息标签 */
+.message-meta {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.3rem;
+}
+.meta-tag {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.meta-stop {
+  background: #dcfce7;
+  color: #16a34a;
+}
+.meta-length {
+  background: #fef3c7;
+  color: #d97706;
+}
+.meta-content_filter {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.meta-tool_calls {
+  background: #dbeafe;
+  color: #2563eb;
+}
+.meta-model {
+  background: #f1f5f9;
+  color: var(--text-secondary);
+}
+.meta-usage {
+  background: #f0f0ff;
+  color: var(--primary);
+}
+
 /* Markdown 渲染样式 */
 .markdown-body :deep(h1), .markdown-body :deep(h2), .markdown-body :deep(h3) { margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 600; }
 .markdown-body :deep(h1) { font-size: 1.3rem; }

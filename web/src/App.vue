@@ -69,6 +69,9 @@
           <Base64EncodeTool v-else-if="currentTool === 'base64'" />
           <URLTool v-else-if="currentTool === 'url'" />
           <HashTool v-else-if="currentTool === 'hash'" />
+          <SymmetricTool v-else-if="currentTool === 'symmetric'" />
+          <AsymmetricTool v-else-if="currentTool === 'asymmetric'" />
+          <KeyGenTool v-else-if="currentTool === 'keygen'" />
           <UUIDTool v-else-if="currentTool === 'uuid'" />
           <JSONTool v-else-if="currentTool === 'json'" />
           <URLCodeTool v-else-if="currentTool === 'urlcode'" />
@@ -124,6 +127,9 @@ import TimeFormatTool from './components/TimeFormatTool.vue'
 import Base64EncodeTool from './components/Base64EncodeTool.vue'
 import URLTool from './components/URLTool.vue'
 import HashTool from './components/HashTool.vue'
+import SymmetricTool from './components/SymmetricTool.vue'
+import AsymmetricTool from './components/AsymmetricTool.vue'
+import KeyGenTool from './components/KeyGenTool.vue'
 import UUIDTool from './components/UUIDTool.vue'
 import JSONTool from './components/JSONTool.vue'
 import URLCodeTool from './components/URLCodeTool.vue'
@@ -169,6 +175,9 @@ const categories = [
     label: '加密生成',
     tools: [
       { id: 'hash', name: '哈希摘要', icon: '🔏' },
+      { id: 'symmetric', name: '对称加密', icon: '🔑' },
+      { id: 'asymmetric', name: '非对称加密', icon: '🛡️' },
+      { id: 'keygen', name: '密钥生成', icon: '🗝️' },
       { id: 'uuid', name: 'ID生成器', icon: '🆔' },
     ]
   },

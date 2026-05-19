@@ -99,6 +99,28 @@ func main() {
 		case path == "/api/hash/compute":
 			handler.HashCompute(ctx)
 
+		// 对称加密工具
+		case path == "/api/symmetric/compute":
+			handler.SymmetricCompute(ctx)
+		case path == "/api/symmetric/key-sizes":
+			handler.SymmetricKeySizes(ctx)
+
+		// 非对称加密工具
+		case path == "/api/asymmetric/encrypt":
+			handler.AsymmetricEncrypt(ctx)
+		case path == "/api/asymmetric/decrypt":
+			handler.AsymmetricDecrypt(ctx)
+		case path == "/api/asymmetric/sign":
+			handler.AsymmetricSign(ctx)
+		case path == "/api/asymmetric/verify":
+			handler.AsymmetricVerify(ctx)
+
+		// 密钥生成工具
+		case path == "/api/keygen/generate":
+			handler.KeyGenGenerate(ctx)
+		case path == "/api/keygen/types":
+			handler.KeyGenTypes(ctx)
+
 		// UUID / 随机字符串生成工具
 		case path == "/api/uuid/generate":
 			handler.UUIDGenerate(ctx)

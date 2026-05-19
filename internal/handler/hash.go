@@ -39,8 +39,10 @@ func HashCompute(ctx *fasthttp.RequestCtx) {
 		result = hashSvc.SHA256(req.Input)
 	case "sha512":
 		result = hashSvc.SHA512(req.Input)
+	case "sm3":
+		result = hashSvc.SM3(req.Input)
 	default:
-		response.Error(ctx, 1001, "不支持的算法，可选: md5, sha1, sha256, sha512")
+		response.Error(ctx, 1001, "不支持的算法，可选: md5, sha1, sha256, sha512, sm3")
 		return
 	}
 	response.Success(ctx, result)
