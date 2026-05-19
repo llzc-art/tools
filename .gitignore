@@ -1,0 +1,22 @@
+# 编译输出
+build/
+
+# 前端
+web/dist/
+web/node_modules/
+
+# 数据文件
+data/
+
+# 日志文件
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
