@@ -133,6 +133,86 @@ INSERT OR IGNORE INTO api_tester_state (id, data) VALUES (1, '{}');
 }
 ```
 
+### 3.4 笔记目录表 (note_folder)
+
+存储笔记的目录结构，支持多级目录。
+
+| 字段        | 类型      | 约束           | 说明              |
+|------------|----------|---------------|------------------|
+| id         | INTEGER  | PRIMARY KEY AUTOINCREMENT | 目录 ID |
+| name       | TEXT     | NOT NULL       | 目录名称           |
+| parent_id  | INTEGER  | NOT NULL DEFAULT 0 | 父目录 ID（0 表示顶级） |
+| sort_order | INTEGER  | NOT NULL DEFAULT 0 | 排序序号           |
+| created_at | DATETIME | NOT NULL DEFAULT (datetime('now','localtime')) | 创建时间 |
+| updated_at | DATETIME | NOT NULL DEFAULT (datetime('now','localtime')) | 更新时间 |
+
+#### 建表语句
+
+```sql
+CREATE TABLE IF NOT EXISTS note_folder (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    parent_id  INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
+    updated_at DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
+);
+```
+
+### 3.5 笔记文档表 (note_document)
+
+存储笔记文档内容，按目录 ID 关联。
+
+| 字段        | 类型      | 约束           | 说明              |
+|------------|----------|---------------|------------------|
+| id         | INTEGER  | PRIMARY KEY AUTOINCREMENT | 文档 ID |
+| folder_id  | INTEGER  | NOT NULL DEFAULT 0 | 所属目录 ID        |
+| title      | TEXT     | NOT NULL DEFAULT '' | 文档标题          |
+| content    | TEXT     | NOT NULL DEFAULT '' | 文档内容          |
+| sort_order | INTEGER  | NOT NULL DEFAULT 0 | 排序序号           |
+| created_at | DATETIME | NOT NULL DEFAULT (datetime('now','localtime')) | 创建时间 |
+| updated_at | DATETIME | NOT NULL DEFAULT (datetime('now','localtime')) | 更新时间 |
+
+#### 建表语句
+
+```sql
+CREATE TABLE IF NOT EXISTS note_document (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    folder_id  INTEGER NOT NULL DEFAULT 0,
+    title      TEXT    NOT NULL DEFAULT '',
+    content    TEXT    NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
+    updated_at DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
+);
+```
+
+### 3.6 Linux 命令表 (linux_command)
+
+存储用户维护的 Linux 命令及其使用说明。
+
+| 字段        | 类型      | 约束           | 说明              |
+|------------|----------|---------------|------------------|
+| id         | INTEGER  | PRIMARY KEY AUTOINCREMENT | 命令 ID |
+| name       | TEXT     | NOT NULL UNIQUE | 命令名称（唯一）    |
+| description | TEXT    | NOT NULL DEFAULT '' | 简短描述          |
+| usage      | TEXT     | NOT NULL DEFAULT '' | 使用方法说明       |
+| created_at | DATETIME | NOT NULL DEFAULT (datetime('now','localtime')) | 创建时间 |
+| updated_at | DATETIME | NOT NULL DEFAULT (datetime('now','localtime')) | 更新时间 |
+
+#### 建表语句
+
+```sql
+CREATE TABLE IF NOT EXISTS linux_command (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL UNIQUE,
+    description TEXT    NOT NULL DEFAULT '',
+    usage       TEXT    NOT NULL DEFAULT '',
+    created_at  DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
+    updated_at  DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
+);
+```
+
 ## 4. 数据库迁移
 
 项目启动时自动执行数据库迁移，确保表结构为最新版本。迁移逻辑在应用初始化阶段完成：

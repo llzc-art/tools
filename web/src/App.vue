@@ -81,6 +81,19 @@
           <JWTTool v-else-if="currentTool === 'jwt'" />
           <LLMChatTool v-else-if="currentTool === 'llm-chat'" />
           <APITesterTool v-else-if="currentTool === 'api-tester'" />
+          <DocxToMdTool v-else-if="currentTool === 'docx-to-md'" />
+          <ExcelToMdTool v-else-if="currentTool === 'excel-to-md'" />
+          <PdfToMdTool v-else-if="currentTool === 'pdf-to-md'" />
+          <NoteTool v-else-if="currentTool === 'note'" />
+          <LinuxCommandTool v-else-if="currentTool === 'linux-command'" />
+          <PingTool v-else-if="currentTool === 'ping'" />
+          <PortProbeTool v-else-if="currentTool === 'port-probe'" />
+          <SSHProbeTool v-else-if="currentTool === 'ssh-probe'" />
+          <CloudAPITool v-else-if="currentTool === 'cloud-api'" />
+          <WeChatAPITool v-else-if="currentTool === 'wechat-api'" />
+          <WeComAPITool v-else-if="currentTool === 'wecom-api'" />
+          <FeishuAPITool v-else-if="currentTool === 'feishu-api'" />
+          <DataConvertTool v-else-if="currentTool === 'data-convert'" />
         </div>
       </main>
     </div>
@@ -139,6 +152,19 @@ import StringTool from './components/StringTool.vue'
 import JWTTool from './components/JWTTool.vue'
 import LLMChatTool from './components/LLMChatTool.vue'
 import APITesterTool from './components/APITesterTool.vue'
+import DocxToMdTool from './components/DocxToMdTool.vue'
+import ExcelToMdTool from './components/ExcelToMdTool.vue'
+import PdfToMdTool from './components/PdfToMdTool.vue'
+import NoteTool from './components/NoteTool.vue'
+import LinuxCommandTool from './components/LinuxCommandTool.vue'
+import PingTool from './components/PingTool.vue'
+import PortProbeTool from './components/PortProbeTool.vue'
+import SSHProbeTool from './components/SSHProbeTool.vue'
+import CloudAPITool from './components/CloudAPITool.vue'
+import WeChatAPITool from './components/WeChatAPITool.vue'
+import WeComAPITool from './components/WeComAPITool.vue'
+import FeishuAPITool from './components/FeishuAPITool.vue'
+import DataConvertTool from './components/DataConvertTool.vue'
 
 const currentTool = ref(localStorage.getItem('last-tool') || 'timestamp')
 const searchQuery = ref('')
@@ -186,6 +212,7 @@ const categories = [
     label: '数据处理',
     tools: [
       { id: 'json', name: 'JSON美化', icon: '📋' },
+      { id: 'data-convert', name: '格式转换', icon: '🔄' },
       { id: 'regex', name: '正则匹配', icon: '🔎' },
     ]
   },
@@ -202,6 +229,42 @@ const categories = [
     label: '网络工具',
     tools: [
       { id: 'ip', name: 'IP 查询', icon: '🌍' },
+      { id: 'ping', name: 'Ping 测试', icon: '📡' },
+      { id: 'port-probe', name: '端口探测', icon: '🔌' },
+      { id: 'ssh-probe', name: 'SSH 探测', icon: '🔐' },
+    ]
+  },
+  {
+    id: 'document',
+    label: '文档解析',
+    tools: [
+      { id: 'docx-to-md', name: 'DOCX转MD', icon: '📄' },
+      { id: 'excel-to-md', name: 'Excel转MD', icon: '📊' },
+      { id: 'pdf-to-md', name: 'PDF转MD', icon: '📑' },
+    ]
+  },
+  {
+    id: 'notes',
+    label: '笔记',
+    tools: [
+      { id: 'note', name: '我的笔记', icon: '📝' },
+    ]
+  },
+  {
+    id: 'linux',
+    label: 'Linux',
+    tools: [
+      { id: 'linux-command', name: '命令查询', icon: '🐧' },
+    ]
+  },
+  {
+    id: 'integration',
+    label: '应用对接',
+    tools: [
+      { id: 'wechat-api', name: '微信API', icon: '💬' },
+      { id: 'feishu-api', name: '飞书API', icon: '🐦' },
+      { id: 'cloud-api', name: '云平台API', icon: '☁️' },
+      { id: 'wecom-api', name: '企业微信API', icon: '🏢' },
     ]
   },
 ]

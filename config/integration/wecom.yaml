@@ -1,0 +1,116 @@
+# 企业微信 API 定义配置
+
+base_url: "https://qyapi.weixin.qq.com"
+auth_fields:
+  - key: corp_id
+    label: CorpID
+    type: text
+    placeholder: "ww1234567890abcdef"
+    required: true
+  - key: corp_secret
+    label: CorpSecret
+    type: password
+    placeholder: "a1b2c3d4e5f6..."
+    required: true
+  - key: access_token
+    label: Access Token
+    type: text
+    placeholder: "自动获取或手动填写"
+    required: false
+
+apis:
+  - id: wc-token
+    name: 获取Access Token
+    method: GET
+    path: /cgi-bin/gettoken
+    description: 通过corpid和corpsecret获取access_token
+    category: 基础支持
+    query_params: "corpid={{corp_id}}&corpsecret={{corp_secret}}"
+
+  - id: wc-dept-list
+    name: 获取部门列表
+    method: GET
+    path: /cgi-bin/department/list
+    description: 获取企业部门列表
+    category: 部门管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wc-user-list
+    name: 获取部门用户列表
+    method: GET
+    path: /cgi-bin/user/list
+    description: 获取指定部门下的用户详情列表
+    category: 用户管理
+    query_params: "access_token={{access_token}}&department_id={{department_id}}"
+
+  - id: wc-user-info
+    name: 读取用户信息
+    method: GET
+    path: /cgi-bin/user/get
+    description: 读取指定用户的信息
+    category: 用户管理
+    query_params: "access_token={{access_token}}&userid={{userid}}"
+
+  - id: wc-user-create
+    name: 创建用户
+    method: POST
+    path: /cgi-bin/user/create
+    description: 创建企业微信用户
+    category: 用户管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wc-user-update
+    name: 更新用户信息
+    method: POST
+    path: /cgi-bin/user/update
+    description: 更新用户信息
+    category: 用户管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wc-msg-send
+    name: 发送应用消息
+    method: POST
+    path: /cgi-bin/message/send
+    description: 向指定用户/部门发送应用消息
+    category: 消息管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wc-external-list
+    name: 获取外部联系人列表
+    method: GET
+    path: /cgi-bin/externalcontact/list
+    description: 获取指定员工的外部联系人列表
+    category: 外部联系人
+    query_params: "access_token={{access_token}}&userid={{userid}}"
+
+  - id: wc-external-get
+    name: 获取外部联系人详情
+    method: GET
+    path: /cgi-bin/externalcontact/get
+    description: 获取外部联系人详情
+    category: 外部联系人
+    query_params: "access_token={{access_token}}&external_userid={{external_userid}}"
+
+  - id: wc-media-upload
+    name: 上传临时素材
+    method: POST
+    path: /cgi-bin/media/upload
+    description: 上传临时素材（图片/语音/视频/文件）
+    category: 素材管理
+    query_params: "access_token={{access_token}}&type=image"
+
+  - id: wc-tag-list
+    name: 获取标签列表
+    method: GET
+    path: /cgi-bin/tag/list
+    description: 获取企业标签列表
+    category: 标签管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wc-agent-list
+    name: 获取应用列表
+    method: GET
+    path: /cgi-bin/agent/list
+    description: 获取企业应用列表
+    category: 应用管理
+    query_params: "access_token={{access_token}}"

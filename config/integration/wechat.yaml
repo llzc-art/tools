@@ -1,0 +1,116 @@
+# 微信开放平台 API 定义配置
+
+base_url: "https://api.weixin.qq.com"
+auth_fields:
+  - key: app_id
+    label: AppID
+    type: text
+    placeholder: "wx1234567890abcdef"
+    required: true
+  - key: app_secret
+    label: AppSecret
+    type: password
+    placeholder: "a1b2c3d4e5f6..."
+    required: true
+  - key: access_token
+    label: Access Token
+    type: text
+    placeholder: "自动获取或手动填写"
+    required: false
+
+apis:
+  - id: wx-token
+    name: 获取Access Token
+    method: GET
+    path: /cgi-bin/token
+    description: 通过appid和secret获取access_token
+    category: 基础支持
+    query_params: "grant_type=client_credential&appid={{app_id}}&secret={{app_secret}}"
+
+  - id: wx-jsapi-ticket
+    name: 获取jsapi_ticket
+    method: GET
+    path: /cgi-bin/ticket/getticket
+    description: 获取jsapi_ticket用于JS-SDK
+    category: 基础支持
+    query_params: "access_token={{access_token}}&type=jsapi"
+
+  - id: wx-user-info
+    name: 获取用户基本信息
+    method: GET
+    path: /cgi-bin/user/info
+    description: 通过openid获取用户基本信息（UnionID机制）
+    category: 用户管理
+    query_params: "access_token={{access_token}}&openid={{openid}}&lang=zh_CN"
+
+  - id: wx-user-list
+    name: 获取用户列表
+    method: GET
+    path: /cgi-bin/user/get
+    description: 获取关注者列表
+    category: 用户管理
+    query_params: "access_token={{access_token}}&next_openid="
+
+  - id: wx-menu-create
+    name: 创建自定义菜单
+    method: POST
+    path: /cgi-bin/menu/create
+    description: 创建自定义菜单
+    category: 菜单管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wx-menu-get
+    name: 查询自定义菜单
+    method: GET
+    path: /cgi-bin/menu/get
+    description: 查询自定义菜单
+    category: 菜单管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wx-menu-delete
+    name: 删除自定义菜单
+    method: GET
+    path: /cgi-bin/menu/delete
+    description: 删除自定义菜单
+    category: 菜单管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wx-template-send
+    name: 发送模板消息
+    method: POST
+    path: /cgi-bin/message/template/send
+    description: 发送模板消息
+    category: 消息管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wx-material-add
+    name: 新增永久素材
+    method: POST
+    path: /cgi-bin/material/add_material
+    description: 新增永久素材（图片/语音/视频/缩略图）
+    category: 素材管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wx-material-list
+    name: 获取素材列表
+    method: POST
+    path: /cgi-bin/material/batchget_material
+    description: 获取永久素材列表
+    category: 素材管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wx-qrcode-create
+    name: 创建二维码
+    method: POST
+    path: /cgi-bin/qrcode/create
+    description: 创建临时/永久二维码
+    category: 账号管理
+    query_params: "access_token={{access_token}}"
+
+  - id: wx-shorturl
+    name: 长链接转短链接
+    method: POST
+    path: /cgi-bin/shorturl
+    description: 长链接转短链接
+    category: 账号管理
+    query_params: "access_token={{access_token}}"

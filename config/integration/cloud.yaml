@@ -1,0 +1,378 @@
+# 云平台 API 定义配置
+# 每个平台包含：认证字段、签名方法、区域列表、预定义 API 列表
+
+platforms:
+  - id: tencent
+    name: 腾讯云
+    base_url: "https://cvm.tencentcloudapi.com"
+    sign_method: tc3-hmac-sha256
+    region: ap-guangzhou
+    regions:
+      - value: ap-guangzhou
+        label: 华南地区(广州)
+      - value: ap-shanghai
+        label: 华东地区(上海)
+      - value: ap-beijing
+        label: 华北地区(北京)
+      - value: ap-chengdu
+        label: 西南地区(成都)
+      - value: ap-hongkong
+        label: 港澳台地区(中国香港)
+      - value: ap-singapore
+        label: 东南亚地区(新加坡)
+      - value: ap-tokyo
+        label: 亚太地区(东京)
+      - value: na-siliconvalley
+        label: 美国西部(硅谷)
+      - value: eu-frankfurt
+        label: 欧洲地区(法兰克福)
+    auth_fields:
+      - key: secret_id
+        label: SecretId
+        type: text
+        placeholder: "AKIDz8krbsJ5..."
+        required: true
+      - key: secret_key
+        label: SecretKey
+        type: password
+        placeholder: "Gu5t9xG..."
+        required: true
+    apis:
+      - id: tc-cvm-list
+        name: 查询实例列表
+        method: POST
+        path: "/"
+        description: DescribeInstances
+        category: CVM云服务器
+        body_template: '{"Action":"DescribeInstances","Version":"2017-03-12","Region":"{{region}}","Offset":0,"Limit":20}'
+
+      - id: tc-cvm-zones
+        name: 查询可用区
+        method: POST
+        path: "/"
+        description: DescribeZones
+        category: CVM云服务器
+        body_template: '{"Action":"DescribeZones","Version":"2017-03-12","Region":"{{region}}"}'
+
+      - id: tc-cbs-list
+        name: 查询云硬盘列表
+        method: POST
+        path: "/"
+        description: DescribeDisks
+        category: CBS云硬盘
+        body_template: '{"Action":"DescribeDisks","Version":"2019-07-19","Region":"{{region}}","Offset":0,"Limit":20}'
+
+      - id: tc-clb-list
+        name: 查询负载均衡列表
+        method: POST
+        path: "/"
+        description: DescribeLoadBalancers
+        category: CLB负载均衡
+        body_template: '{"Action":"DescribeLoadBalancers","Version":"2018-03-17","Region":"{{region}}","Offset":0,"Limit":20}'
+
+      - id: tc-tke-list
+        name: 查询集群列表
+        method: POST
+        path: "/"
+        description: DescribeClusters
+        category: TKE容器服务
+        body_template: '{"Action":"DescribeClusters","Version":"2018-05-25","Region":"{{region}}","Offset":0,"Limit":20}'
+
+      - id: tc-cdb-list
+        name: 查询数据库实例列表
+        method: POST
+        path: "/"
+        description: DescribeDBInstances
+        category: TDSQL数据库
+        body_template: '{"Action":"DescribeDBInstances","Version":"2017-03-20","Region":"{{region}}","Offset":0,"Limit":20}'
+    tencent_service_mappings:
+      - action: DescribeInstances
+        service: cvm
+        host: cvm.tencentcloudapi.com
+      - action: DescribeZones
+        service: cvm
+        host: cvm.tencentcloudapi.com
+      - action: DescribeDisks
+        service: cbs
+        host: cbs.tencentcloudapi.com
+      - action: DescribeLoadBalancers
+        service: clb
+        host: clb.tencentcloudapi.com
+      - action: DescribeClusters
+        service: tke
+        host: tke.tencentcloudapi.com
+      - action: DescribeDBInstances
+        service: cdb
+        host: cdb.tencentcloudapi.com
+
+  - id: aliyun
+    name: 阿里云
+    base_url: "https://ecs.aliyuncs.com"
+    sign_method: aliyun-hmac-sha1
+    region: cn-hangzhou
+    regions:
+      - value: cn-hangzhou
+        label: 华东1(杭州)
+      - value: cn-shanghai
+        label: 华东2(上海)
+      - value: cn-qingdao
+        label: 华北1(青岛)
+      - value: cn-beijing
+        label: 华北2(北京)
+      - value: cn-shenzhen
+        label: 华南1(深圳)
+      - value: cn-chengdu
+        label: 西南1(成都)
+      - value: cn-hongkong
+        label: 中国香港
+      - value: ap-southeast-1
+        label: 亚太东南1(新加坡)
+      - value: us-west-1
+        label: 美国西部(硅谷)
+      - value: eu-central-1
+        label: 欧洲中部(法兰克福)
+    auth_fields:
+      - key: access_key_id
+        label: AccessKey ID
+        type: text
+        placeholder: "LTAI5t..."
+        required: true
+      - key: access_key_secret
+        label: AccessKey Secret
+        type: password
+        placeholder: "Bf4J7x..."
+        required: true
+    apis:
+      - id: ali-ecs-list
+        name: 查询ECS实例列表
+        method: GET
+        path: "/"
+        description: DescribeInstances
+        category: ECS云服务器
+        query_params: "Action=DescribeInstances&Version=2014-05-26&RegionId={{region}}&PageSize=20"
+
+      - id: ali-ecs-zones
+        name: 查询可用区
+        method: GET
+        path: "/"
+        description: DescribeZones
+        category: ECS云服务器
+        query_params: "Action=DescribeZones&Version=2014-05-26&RegionId={{region}}"
+
+      - id: ali-disk-list
+        name: 查询云盘列表
+        method: GET
+        path: "/"
+        description: DescribeDisks
+        category: ECS云服务器
+        query_params: "Action=DescribeDisks&Version=2014-05-26&RegionId={{region}}&PageSize=20"
+
+      - id: ali-rds-list
+        name: 查询RDS实例列表
+        method: GET
+        path: "/"
+        description: DescribeDBInstances
+        category: RDS数据库
+        query_params: "Action=DescribeDBInstances&Version=2014-08-15&RegionId={{region}}&PageSize=20"
+
+      - id: ali-slb-list
+        name: 查询SLB实例列表
+        method: GET
+        path: "/"
+        description: DescribeLoadBalancers
+        category: SLB负载均衡
+        query_params: "Action=DescribeLoadBalancers&Version=2014-05-15&RegionId={{region}}&PageSize=20"
+
+      - id: ali-k8s-list
+        name: 查询K8s集群列表
+        method: GET
+        path: "/"
+        description: DescribeClusters
+        category: ACK容器服务
+        query_params: "Action=DescribeClusters&Version=2018-02-28&RegionId={{region}}"
+    aliyun_host_mappings:
+      - action: DescribeInstances
+        host: ecs.aliyuncs.com
+      - action: DescribeZones
+        host: ecs.aliyuncs.com
+      - action: DescribeDisks
+        host: ecs.aliyuncs.com
+      - action: DescribeDBInstances
+        host: rds.aliyuncs.com
+      - action: DescribeLoadBalancers
+        host: slb.aliyuncs.com
+      - action: DescribeClusters
+        host: cs.aliyuncs.com
+
+  - id: aws
+    name: AWS
+    base_url: "https://ec2.amazonaws.com"
+    sign_method: aws-sigv4
+    region: us-east-1
+    regions:
+      - value: us-east-1
+        label: US East (N. Virginia)
+      - value: us-east-2
+        label: US East (Ohio)
+      - value: us-west-1
+        label: US West (N. California)
+      - value: us-west-2
+        label: US West (Oregon)
+      - value: ap-east-1
+        label: Asia Pacific (Hong Kong)
+      - value: ap-southeast-1
+        label: Asia Pacific (Singapore)
+      - value: ap-northeast-1
+        label: Asia Pacific (Tokyo)
+      - value: eu-west-1
+        label: EU (Ireland)
+      - value: eu-central-1
+        label: EU (Frankfurt)
+    auth_fields:
+      - key: access_key_id
+        label: Access Key ID
+        type: text
+        placeholder: "AKIAIOSFODNN7..."
+        required: true
+      - key: secret_access_key
+        label: Secret Access Key
+        type: password
+        placeholder: "wJalrXUtnFEMI..."
+        required: true
+    apis:
+      - id: aws-ec2-list
+        name: 查询EC2实例列表
+        method: POST
+        path: "/"
+        description: DescribeInstances
+        category: EC2云服务器
+        body_template: "Action=DescribeInstances&Version=2016-11-15&Filter.1.Name=instance-state-name&Filter.1.Value.1=running"
+
+      - id: aws-ec2-zones
+        name: 查询可用区
+        method: POST
+        path: "/"
+        description: DescribeAvailabilityZones
+        category: EC2云服务器
+        body_template: "Action=DescribeAvailabilityZones&Version=2016-11-15"
+
+      - id: aws-ec2-vpcs
+        name: 查询VPC列表
+        method: POST
+        path: "/"
+        description: DescribeVpcs
+        category: EC2云服务器
+        body_template: "Action=DescribeVpcs&Version=2016-11-15"
+
+      - id: aws-elb-list
+        name: 查询ELB列表
+        method: POST
+        path: "/"
+        description: DescribeLoadBalancers
+        category: ELB负载均衡
+        body_template: "Action=DescribeLoadBalancers&Version=2012-06-01"
+
+      - id: aws-rds-list
+        name: 查询RDS实例列表
+        method: POST
+        path: "/"
+        description: DescribeDBInstances
+        category: RDS数据库
+        body_template: "Action=DescribeDBInstances&Version=2014-10-31"
+
+      - id: aws-lambda-list
+        name: 查询Lambda函数列表
+        method: GET
+        path: "/2015-03-31/functions"
+        description: ListFunctions
+        category: Lambda函数计算
+    aws_service_mappings:
+      - category: S3
+        service: s3
+        host_template: "s3.%s.amazonaws.com"
+      - category: RDS
+        service: rds
+        host_template: "rds.%s.amazonaws.com"
+      - category: ELB
+        service: elasticloadbalancing
+        host_template: "elasticloadbalancing.%s.amazonaws.com"
+      - category: Lambda
+        service: lambda
+        host_template: "lambda.%s.amazonaws.com"
+      - category: EKS
+        service: eks
+        host_template: "eks.%s.amazonaws.com"
+
+  - id: huawei
+    name: 华为云
+    base_url: "https://ecs.cn-north-1.myhuaweicloud.com"
+    sign_method: huawei-hmac-sha256
+    region: cn-north-1
+    regions:
+      - value: cn-north-1
+        label: 华北-北京一
+      - value: cn-north-4
+        label: 华北-北京四
+      - value: cn-east-2
+        label: 华东-上海二
+      - value: cn-east-3
+        label: 华东-上海一
+      - value: cn-south-1
+        label: 华南-广州
+      - value: ap-southeast-1
+        label: 中国香港
+      - value: ap-southeast-2
+        label: 亚太-曼谷
+      - value: ap-southeast-3
+        label: 亚太-新加坡
+    auth_fields:
+      - key: access_key_id
+        label: AK
+        type: text
+        placeholder: "UGQOBN..."
+        required: true
+      - key: secret_access_key
+        label: SK
+        type: password
+        placeholder: "dGOXVx..."
+        required: true
+      - key: project_id
+        label: Project ID
+        type: text
+        placeholder: "0aa8..."
+        required: true
+    apis:
+      - id: hw-ecs-list
+        name: 查询ECS实例列表
+        method: GET
+        path: "/v1/{{project_id}}/cloudservers/detail"
+        description: 查询ECS云服务器详情列表
+        category: ECS云服务器
+
+      - id: hw-ecs-zones
+        name: 查询可用区
+        method: GET
+        path: "/v2/{{project_id}}/os-availability-zone"
+        description: 查询可用区列表
+        category: ECS云服务器
+
+      - id: hw-evs-list
+        name: 查询云硬盘列表
+        method: GET
+        path: "/v2/{{project_id}}/cloudvolumes/detail"
+        description: 查询EVS云硬盘详情列表
+        category: EVS云硬盘
+
+      - id: hw-rds-list
+        name: 查询RDS实例列表
+        method: GET
+        path: "/v3/{{project_id}}/instances"
+        description: 查询RDS数据库实例列表
+        category: RDS数据库
+
+      - id: hw-vpc-list
+        name: 查询VPC列表
+        method: GET
+        path: "/v1/{{project_id}}/vpcs"
+        description: 查询VPC列表
+        category: VPC网络

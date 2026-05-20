@@ -61,6 +61,10 @@ tools/
 │   │   ├── string.go       # 字符串工具
 │   │   ├── jwt.go          # JWT 解码
 │   │   ├── llm.go          # LLM 对话
+│   │   ├── document.go     # 文档解析工具
+│   │   ├── note.go          # 笔记工具
+│   │   ├── linux_command.go  # Linux 命令查询工具
+│   │   ├── network.go       # 网络工具
 │   │   ├── api_proxy.go    # API 代理转发
 │   │   ├── api_tester.go   # API 调试器状态持久化
 │   │   ├── openapi_import.go # OpenAPI/Swagger 导入
@@ -74,7 +78,12 @@ tools/
 │   ├── logger/             # 日志包
 │   └── response/           # 统一响应格式
 ├── config/                 # 配置文件
-│   └── config.yaml         # 应用配置
+│   ├── config.yaml         # 应用配置
+│   └── integration/        # 应用对接 API 定义
+│       ├── cloud.yaml      # 云平台 API（腾讯云/阿里云/AWS/华为云）
+│       ├── wechat.yaml     # 微信 API
+│       ├── wecom.yaml      # 企业微信 API
+│       └── feishu.yaml     # 飞书 API
 └── web/                    # 前端项目
     ├── src/
     │   ├── App.vue         # 根组件
@@ -93,7 +102,15 @@ tools/
     │       ├── IPTool.vue
     │       ├── RegexTool.vue
     │       ├── StringTool.vue
-    │       └── JWTTool.vue
+    │       ├── JWTTool.vue
+    │       ├── DocxToMdTool.vue
+    │       ├── ExcelToMdTool.vue
+    │       ├── PdfToMdTool.vue
+    │       ├── NoteTool.vue
+    │       ├── LinuxCommandTool.vue
+    │       ├── PingTool.vue
+    │       ├── PortProbeTool.vue
+    │       └── SSHProbeTool.vue
     ├── index.html
     ├── vite.config.js
     └── package.json
@@ -141,9 +158,13 @@ Service 层负责具体的业务逻辑处理，与 HTTP 层解耦：
 | StringService | 字符串统计、大小写转换、命名转换、Hex 转换 |
 | JWTService | JWT Token 解码 |
 | LLMService | LLM 对话（流式/非流式） |
+| DocumentService | 文档解析（DOCX/Excel/PDF 转 Markdown） |
 | APIProxyService | HTTP 请求代理转发 |
 | APITesterService | 调试器状态持久化 |
 | OpenAPIImportService | Swagger 2.0 / OpenAPI 3.0 解析导入 |
+| LinuxCommandService | Linux 命令帮助信息获取（执行系统命令 --help） |
+| NetworkService | 网络探测（Ping/端口/SSH 连通性检测） |
+| IntegrationService | 应用对接（云平台签名调用、微信/企业微信/飞书代理） |
 
 ### 3.4 API 代理模块
 
@@ -197,6 +218,7 @@ Service 层负责具体的业务逻辑处理，与 HTTP 层解耦：
 | 2007  | 正则表达式错误        |
 | 2008  | 十六进制解码失败       |
 | 2009  | LLM 对话请求失败      |
+| 2010  | 文档转换失败          |
 | 5000  | 服务器内部错误        |
 
 ## 5. 中间件设计
@@ -238,6 +260,87 @@ llm:
   chat_timeout: 120    # 非流式对话超时（秒）
 ```
 
+### 应用对接 API 定义配置
+
+`config/integration/` 目录存放各平台 API 定义，服务启动时自动加载，无需修改代码即可新增/修改接口：
+
+```
+config/integration/
+├── cloud.yaml      # 云平台 API + 服务映射（腾讯云/阿里云/AWS/华为云）
+├── wechat.yaml     # 微信开放平台
+├── wecom.yaml      # 企业微信
+└── feishu.yaml     # 飞书开放平台
+```
+
+**cloud.yaml 结构示例：**
+
+```yaml
+platforms:
+  - id: tencent
+    name: 腾讯云
+    base_url: "https://cvm.tencentcloudapi.com"
+    sign_method: tc3-hmac-sha256
+    region: ap-guangzhou          # 默认区域
+    regions:                      # 支持的区域列表（前端下拉选择）
+      - value: ap-guangzhou
+        label: 华南地区(广州)
+      - value: ap-shanghai
+        label: 华东地区(上海)
+    auth_fields:
+      - key: secret_id
+        label: SecretId
+        type: text
+        required: true
+    apis:
+      - id: tc-cvm-list
+        name: 查询实例列表
+        method: POST
+        path: "/"
+        body_template: '{"Action":"DescribeInstances",...}'
+    tencent_service_mappings:      # Action -> 服务/主机
+      - action: DescribeInstances
+        service: cvm
+        host: cvm.tencentcloudapi.com
+      - action: DescribeDisks
+        service: cbs
+        host: cbs.tencentcloudapi.com
+
+  - id: aliyun
+    name: 阿里云
+    aliyun_host_mappings:           # Action -> 主机
+      - action: DescribeInstances
+        host: ecs.aliyuncs.com
+      - action: DescribeDBInstances
+        host: rds.aliyuncs.com
+
+  - id: aws
+    name: AWS
+    aws_service_mappings:          # Category -> 服务/主机模板
+      - category: S3
+        service: s3
+        host_template: "s3.%s.amazonaws.com"
+      - category: RDS
+        service: rds
+        host_template: "rds.%s.amazonaws.com"
+```
+
+**wechat.yaml / wecom.yaml / feishu.yaml 结构示例：**
+
+```yaml
+base_url: "https://api.weixin.qq.com"
+auth_fields:
+  - key: app_id
+    label: AppID
+    type: text
+    required: true
+apis:
+  - id: wx-token
+    name: 获取Access Token
+    method: GET
+    path: /cgi-bin/token
+    query_params: "grant_type=client_credential&appid={{app_id}}&secret={{app_secret}}"
+```
+
 ## 7. 前端设计
 
 ### 7.1 技术方案
@@ -259,7 +362,10 @@ llm:
 | crypto | 加密生成 | 哈希摘要、ID 生成器 |
 | data | 数据处理 | JSON 美化、正则匹配 |
 | time | 时间日期 | 时间戳转换、日期格式化 |
-| network | 网络工具 | IP 查询 |
+| network | 网络工具 | IP 查询、Ping 测试、端口探测、SSH 探测 |
+| document | 文档解析 | DOCX 转 Markdown、Excel 转 Markdown、PDF 转 Markdown |
+| notes | 笔记 | 我的笔记 |
+| linux | Linux | 命令查询 |
 
 ### 7.3 全局功能
 

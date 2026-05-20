@@ -5,11 +5,15 @@
     <div class="card">
       <h3>获取当前时间戳</h3>
       <div class="form-row">
-        <select v-model="nowUnit" class="input-select">
-          <option value="s">秒 (s)</option>
-          <option value="ms">毫秒 (ms)</option>
-        </select>
-        <button @click="getNow" class="btn btn-primary">获取</button>
+        <div class="form-group half">
+          <select v-model="nowUnit" class="input-select">
+            <option value="s">秒 (s)</option>
+            <option value="ms">毫秒 (ms)</option>
+          </select>
+        </div>
+        <div class="form-group half">
+          <button @click="getNow" class="btn btn-primary">获取</button>
+        </div>
       </div>
       <div v-if="nowResult" class="result-box">
         <div class="result-label">当前时间戳</div>

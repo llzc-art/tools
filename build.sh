@@ -245,6 +245,8 @@ ${bin_name}
 .
 ├── ${bin_name}       # 主程序
 ├── config.yaml       # 配置文件
+├── config/           # 应用对接 API 定义
+│   └── integration/  # 云平台/微信/飞书等 API 配置
 ├── start.sh         # 启动脚本 (Linux/macOS)
 ├── start.bat        # 启动脚本 (Windows)
 └── README.md        # 说明文档
@@ -366,6 +368,10 @@ package() {
     # 复制配置文件
     cp config/config.yaml "$full_dir/"
 
+    # 复制应用对接 API 定义配置
+    mkdir -p "$full_dir/config/integration"
+    cp config/integration/*.yaml "$full_dir/config/integration/"
+
     # 生成 README
     generate_readme "$os" > "$full_dir/README.md"
 
@@ -410,6 +416,8 @@ info "复制配置文件..."
 for dir in "${BUILT_DIRS[@]}"; do
     if [ -d "${OUTPUT_DIR}/${dir}" ]; then
         cp config/config.yaml "${OUTPUT_DIR}/${dir}/" 2>/dev/null || true
+        mkdir -p "${OUTPUT_DIR}/${dir}/config/integration"
+        cp config/integration/*.yaml "${OUTPUT_DIR}/${dir}/config/integration/" 2>/dev/null || true
     fi
 done
 ok "配置文件复制完成"

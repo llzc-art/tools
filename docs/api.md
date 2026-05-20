@@ -45,9 +45,8 @@
 | 2007  | 正则表达式错误        |
 | 2008  | 十六进制解码失败       |
 | 2009  | LLM 对话请求失败      |
+| 2010  | 文档转换失败          |
 | 5000  | 服务器内部错误        |
-
----
 
 ## 3. 健康检查
 
@@ -730,9 +729,127 @@ data: [DONE]
 
 ---
 
-## 18. API 代理工具
+## 18. 文档解析工具
 
-### 18.1 代理转发请求
+### 18.1 DOCX 转 Markdown
+
+**POST** `/api/document/docx-to-md`
+
+将 .docx 文件转换为 Markdown 格式。支持两种请求方式：
+
+#### 方式一：文件上传（multipart/form-data）
+
+| 参数         | 类型   | 必填 | 说明                                  |
+|-------------|--------|------|---------------------------------------|
+| file        | file   | 是   | 上传的 .docx 文件                      |
+| output_path | string | 否   | 输出 Markdown 文件路径（服务器端路径）  |
+
+#### 方式二：指定服务器文件路径（application/json）
+
+| 参数        | 类型   | 必填 | 说明                                  |
+|------------|--------|------|---------------------------------------|
+| input_path | string | 是   | 服务器端 .docx 文件路径                |
+| output_path | string | 否   | 输出 Markdown 文件路径                 |
+
+#### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "markdown": "# 标题\n\n文档内容...",
+    "output_path": "/path/to/output.md",
+    "warnings": []
+  }
+}
+```
+
+#### 技术说明
+
+基于 [docx2md](https://github.com/zakahan/docx2md) 纯 Go 库进行 DOCX 解析，支持标题、段落、表格、图片提取，无需外部依赖。
+
+### 18.2 Excel 转 Markdown
+
+**POST** `/api/document/excel-to-md`
+
+将 .xlsx 文件转换为 Markdown 表格格式。支持两种请求方式：
+
+#### 方式一：文件上传（multipart/form-data）
+
+| 参数         | 类型   | 必填 | 说明                                  |
+|-------------|--------|------|---------------------------------------|
+| file        | file   | 是   | 上传的 .xlsx 文件                     |
+| output_path | string | 否   | 输出 Markdown 文件路径（服务器端路径）  |
+
+#### 方式二：指定服务器文件路径（application/json）
+
+| 参数        | 类型   | 必填 | 说明                                  |
+|------------|--------|------|---------------------------------------|
+| input_path | string | 是   | 服务器端 .xlsx 文件路径                |
+| output_path | string | 否   | 输出 Markdown 文件路径                 |
+
+#### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "markdown": "| Name | Age |\n| --- | --- |\n| Alice | 30 |",
+    "output_path": "",
+    "warnings": []
+  }
+}
+```
+
+#### 技术说明
+
+优先使用 [tabula](https://github.com/tsawler/tabula) 进行转换，失败时回退到 [excelize](https://github.com/qax-os/excelize) 读取并生成 Markdown 表格，支持多工作表。
+
+### 18.3 PDF 转 Markdown
+
+**POST** `/api/document/pdf-to-md`
+
+将 .pdf 文件转换为 Markdown 格式。支持两种请求方式：
+
+#### 方式一：文件上传（multipart/form-data）
+
+| 参数         | 类型   | 必填 | 说明                                  |
+|-------------|--------|------|---------------------------------------|
+| file        | file   | 是   | 上传的 .pdf 文件                      |
+| output_path | string | 否   | 输出 Markdown 文件路径（服务器端路径）  |
+
+#### 方式二：指定服务器文件路径（application/json）
+
+| 参数        | 类型   | 必填 | 说明                                  |
+|------------|--------|------|---------------------------------------|
+| input_path | string | 是   | 服务器端 .pdf 文件路径                 |
+| output_path | string | 否   | 输出 Markdown 文件路径                 |
+
+#### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "markdown": "# 标题\n\nPDF 内容...",
+    "output_path": "",
+    "warnings": []
+  }
+}
+```
+
+#### 技术说明
+
+基于 [tabula](https://github.com/tsawler/tabula) 进行 PDF 解析，支持文本提取、表格识别、标题检测、段落重组，适用于 RAG 场景。
+
+---
+
+## 19. API 代理工具
+
+### 19.1 代理转发请求
 
 **POST** `/api/proxy/send`
 
@@ -787,7 +904,7 @@ data: [DONE]
 }
 ```
 
-### 18.2 OpenAPI 导入
+### 19.2 OpenAPI 导入
 
 **POST** `/api/proxy/openapi-import`
 
@@ -830,15 +947,15 @@ data: [DONE]
 
 ---
 
-## 19. API 测试器状态
+## 20. API 测试器状态
 
-### 19.1 获取调试器状态
+### 20.1 获取调试器状态
 
 **POST** `/api/api-tester/state/get`
 
 获取 API 调试工具的完整持久化状态。
 
-### 19.2 保存调试器状态
+### 20.2 保存调试器状态
 
 **POST** `/api/api-tester/state/save`
 
@@ -863,3 +980,353 @@ data: [DONE]
 | groups       | array  | API 分组数据        |
 | environments | array  | 环境配置列表        |
 | useProxy     | bool   | 是否使用代理模式     |
+
+---
+
+## 21. 笔记工具
+
+### 21.1 获取笔记目录列表
+
+**POST** `/api/note/folder/list`
+
+获取所有笔记目录。
+
+#### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": [
+    {
+      "id": 1,
+      "name": "工作笔记",
+      "parent_id": 0,
+      "sort_order": 0,
+      "created_at": "2026-05-19 14:00:00",
+      "updated_at": "2026-05-19 14:00:00"
+    }
+  ]
+}
+```
+
+### 21.2 创建笔记目录
+
+**POST** `/api/note/folder/create`
+
+#### 请求参数
+
+| 参数      | 类型   | 必填 | 说明         |
+|----------|-------|------|-------------|
+| name     | string | 是   | 目录名称      |
+| parent_id | int64 | 否   | 父目录 ID，默认 0 |
+
+### 21.3 更新笔记目录
+
+**POST** `/api/note/folder/update`
+
+#### 请求参数
+
+| 参数      | 类型   | 必填 | 说明         |
+|----------|-------|------|-------------|
+| id       | int64  | 是   | 目录 ID      |
+| name     | string | 是   | 目录名称      |
+| parent_id | int64 | 否   | 父目录 ID     |
+
+### 21.4 删除笔记目录
+
+**POST** `/api/note/folder/delete`
+
+删除目录及其下所有笔记文档。
+
+#### 请求参数
+
+| 参数 | 类型  | 必填 | 说明    |
+|-----|------|------|--------|
+| id  | int64 | 是   | 目录 ID |
+
+### 21.5 获取目录下文档列表
+
+**POST** `/api/note/document/list`
+
+#### 请求参数
+
+| 参数      | 类型  | 必填 | 说明    |
+|----------|------|------|--------|
+| folder_id | int64 | 是   | 目录 ID |
+
+### 21.6 获取单个文档
+
+**POST** `/api/note/document/get`
+
+#### 请求参数
+
+| 参数 | 类型  | 必填 | 说明    |
+|-----|------|------|--------|
+| id  | int64 | 是   | 文档 ID |
+
+### 21.7 创建笔记文档
+
+**POST** `/api/note/document/create`
+
+#### 请求参数
+
+| 参数      | 类型   | 必填 | 说明         |
+|----------|-------|------|-------------|
+| folder_id | int64  | 是   | 所属目录 ID   |
+| title    | string | 是   | 文档标题      |
+| content  | string | 否   | 文档内容      |
+
+### 21.8 更新笔记文档
+
+**POST** `/api/note/document/update`
+
+#### 请求参数
+
+| 参数      | 类型   | 必填 | 说明         |
+|----------|-------|------|-------------|
+| id       | int64  | 是   | 文档 ID      |
+| folder_id | int64  | 是   | 所属目录 ID   |
+| title    | string | 是   | 文档标题      |
+| content  | string | 否   | 文档内容      |
+
+### 21.9 删除笔记文档
+
+**POST** `/api/note/document/delete`
+
+#### 请求参数
+
+| 参数 | 类型  | 必填 | 说明    |
+|-----|------|------|--------|
+| id  | int64 | 是   | 文档 ID |
+
+---
+
+## 22. Linux 命令查询工具
+
+### 22.1 获取命令列表
+
+**POST** `/api/linux-command/list`
+
+获取所有已收录的 Linux 命令。
+
+#### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": [
+    {
+      "id": 1,
+      "name": "grep",
+      "description": "文本搜索工具",
+      "usage": "grep [选项] 模式 [文件...]",
+      "created_at": "2026-05-19 14:00:00",
+      "updated_at": "2026-05-19 14:00:00"
+    }
+  ]
+}
+```
+
+### 22.2 搜索命令
+
+**POST** `/api/linux-command/search`
+
+按名称或描述模糊搜索命令。
+
+#### 请求参数
+
+| 参数    | 类型   | 必填 | 说明     |
+|--------|-------|------|---------|
+| keyword | string | 是   | 搜索关键词 |
+
+### 22.3 获取单个命令
+
+**POST** `/api/linux-command/get`
+
+#### 请求参数
+
+| 参数 | 类型  | 必填 | 说明    |
+|-----|------|------|--------|
+| id  | int64 | 是   | 命令 ID |
+
+### 22.4 添加命令
+
+**POST** `/api/linux-command/create`
+
+#### 请求参数
+
+| 参数        | 类型   | 必填 | 说明         |
+|------------|-------|------|-------------|
+| name       | string | 是   | 命令名称（唯一） |
+| description | string | 否   | 简短描述      |
+| usage      | string | 否   | 使用方法说明    |
+
+### 22.5 更新命令
+
+**POST** `/api/linux-command/update`
+
+#### 请求参数
+
+| 参数        | 类型   | 必填 | 说明     |
+|------------|-------|------|---------|
+| id         | int64  | 是   | 命令 ID  |
+| name       | string | 是   | 命令名称  |
+| description | string | 否   | 简短描述  |
+| usage      | string | 否   | 使用方法  |
+
+### 22.6 删除命令
+
+**POST** `/api/linux-command/delete`
+
+#### 请求参数
+
+| 参数 | 类型  | 必填 | 说明    |
+|-----|------|------|--------|
+| id  | int64 | 是   | 命令 ID |
+
+### 22.7 获取系统命令帮助
+
+**POST** `/api/linux-command/help`
+
+在服务端执行命令的 `--help`，获取帮助信息。如果命令在列表中不存在，也可通过此接口查询系统命令的帮助。
+
+#### 请求参数
+
+| 参数    | 类型   | 必填 | 说明    |
+|--------|-------|------|--------|
+| command | string | 是   | 命令名称 |
+
+#### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "command": "ls",
+    "help_text": "Usage: ls [OPTION]... [FILE]...",
+    "available": true,
+    "error": ""
+  }
+}
+```
+
+---
+
+## 23. 网络工具
+
+### 23.1 批量 Ping 测试
+
+**POST** `/api/network/ping`
+
+批量测试服务器到目标 IP 的网络连通性，支持并发测试。
+
+#### 请求参数
+
+| 参数    | 类型   | 必填 | 说明                                  |
+|--------|-------|------|--------------------------------------|
+| ips    | string | 是   | IP 地址列表，每行一个                     |
+| count  | int    | 否   | Ping 次数，默认 3，最大 10               |
+| timeout | int   | 否   | 超时秒数，默认 5，最大 30                 |
+
+#### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": [
+    {
+      "ip": "192.168.1.1",
+      "alive": true,
+      "latency": "0.5ms",
+      "output": "PING 192.168.1.1 ...",
+      "error": ""
+    },
+    {
+      "ip": "10.0.0.99",
+      "alive": false,
+      "latency": "",
+      "output": "",
+      "error": "Ping 失败: ..."
+    }
+  ]
+}
+```
+
+### 23.2 批量端口探测
+
+**POST** `/api/network/port-probe`
+
+批量探测服务器到目标 IP+端口的 TCP 连通性。
+
+#### 请求参数
+
+| 参数       | 类型   | 必填 | 说明                              |
+|-----------|-------|------|----------------------------------|
+| addresses | string | 是   | 地址列表（IP:Port），每行一个         |
+| timeout   | int    | 否   | 超时秒数，默认 5，最大 30             |
+
+#### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": [
+    {
+      "address": "192.168.1.1:22",
+      "ip": "192.168.1.1",
+      "port": 22,
+      "open": true,
+      "latency": "1.2ms",
+      "error": ""
+    },
+    {
+      "address": "10.0.0.1:80",
+      "ip": "10.0.0.1",
+      "port": 80,
+      "open": false,
+      "latency": "",
+      "error": "连接失败: ..."
+    }
+  ]
+}
+```
+
+### 23.3 SSH 连通性探测
+
+**POST** `/api/network/ssh-probe`
+
+探测服务器到目标主机的 SSH 连通性，支持密码认证和密钥认证。
+
+#### 请求参数
+
+| 参数         | 类型   | 必填 | 说明                                      |
+|-------------|-------|------|------------------------------------------|
+| host        | string | 是   | 主机地址（IP 或域名）                       |
+| port        | int    | 否   | SSH 端口，默认 22                           |
+| username    | string | 否   | 用户名（不提供则仅测试端口可达性）              |
+| auth_type   | string | 否   | 认证方式：password（密码）/ key（密钥），默认 password |
+| password    | string | 否   | 密码（auth_type 为 password 时）             |
+| private_key | string | 否   | SSH 私钥内容（auth_type 为 key 时）           |
+| timeout     | int    | 否   | 超时秒数，默认 10，最大 60                    |
+
+#### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "host": "192.168.1.1",
+    "port": 22,
+    "reachable": true,
+    "auth_ok": true,
+    "banner": "SSH-2.0-OpenSSH_8.9",
+    "error": ""
+  }
+}
+```

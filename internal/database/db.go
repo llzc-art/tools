@@ -65,6 +65,35 @@ func createTables() error {
 		)`,
 		// 初始化 api_tester_state 单行记录
 		`INSERT OR IGNORE INTO api_tester_state (id, data) VALUES (1, '{}')`,
+
+		// 笔记工具
+		`CREATE TABLE IF NOT EXISTS note_folder (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			parent_id INTEGER NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
+			updated_at DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS note_document (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			folder_id INTEGER NOT NULL DEFAULT 0,
+			title TEXT NOT NULL DEFAULT '',
+			content TEXT NOT NULL DEFAULT '',
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
+			updated_at DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
+		)`,
+
+		// Linux 命令查询工具
+		`CREATE TABLE IF NOT EXISTS linux_command (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE,
+			description TEXT NOT NULL DEFAULT '',
+			usage TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
+			updated_at DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
+		)`,
 	}
 
 	for _, s := range stmts {

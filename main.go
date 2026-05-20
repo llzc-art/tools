@@ -21,6 +21,157 @@ var (
 	BuildTime = "unknown"
 )
 
+// registerRoutes 注册所有 API 路由，返回 path -> handler 的映射
+func registerRoutes() map[string]fasthttp.RequestHandler {
+	routes := make(map[string]fasthttp.RequestHandler)
+
+	// 基础
+	routes["/api/ping"] = handler.Ping
+
+	// 时间戳工具
+	routes["/api/timestamp/now"] = handler.TimestampNow
+	routes["/api/timestamp/to-time"] = handler.TimestampToTime
+	routes["/api/timestamp/from-time"] = handler.TimestampFromTime
+
+	// 时间格式化工具
+	routes["/api/timeformat/convert"] = handler.TimeFormatConvert
+
+	// Base64 编解码工具
+	routes["/api/base64/encode"] = handler.Base64Encode
+	routes["/api/base64/decode"] = handler.Base64Decode
+
+	// URL 编解码工具
+	routes["/api/url/encode"] = handler.URLEncode
+	routes["/api/url/decode"] = handler.URLDecode
+
+	// Hash 哈希工具
+	routes["/api/hash/compute"] = handler.HashCompute
+
+	// 对称加密工具
+	routes["/api/symmetric/compute"] = handler.SymmetricCompute
+	routes["/api/symmetric/key-sizes"] = handler.SymmetricKeySizes
+
+	// 非对称加密工具
+	routes["/api/asymmetric/encrypt"] = handler.AsymmetricEncrypt
+	routes["/api/asymmetric/decrypt"] = handler.AsymmetricDecrypt
+	routes["/api/asymmetric/sign"] = handler.AsymmetricSign
+	routes["/api/asymmetric/verify"] = handler.AsymmetricVerify
+
+	// 密钥生成工具
+	routes["/api/keygen/generate"] = handler.KeyGenGenerate
+	routes["/api/keygen/types"] = handler.KeyGenTypes
+
+	// UUID / 随机字符串生成工具
+	routes["/api/uuid/generate"] = handler.UUIDGenerate
+	routes["/api/random/generate"] = handler.RandomGenerate
+
+	// JSON 工具
+	routes["/api/json/format"] = handler.JSONFormat
+	routes["/api/json/compress"] = handler.JSONCompress
+
+	// 数据格式转换工具
+	routes["/api/data-convert/detect"] = handler.DataConvertDetect
+	routes["/api/data-convert/convert"] = handler.DataConvert
+
+	// URL 编码/解码/解析/构建
+	routes["/api/urlcode/encode"] = handler.URLEncodeComponent
+	routes["/api/urlcode/decode"] = handler.URLDecodeComponent
+	routes["/api/urlcode/parse"] = handler.URLParse
+	routes["/api/urlcode/build"] = handler.URLBuild
+
+	// Unicode 编解码
+	routes["/api/unicode/encode"] = handler.UnicodeEncode
+	routes["/api/unicode/decode"] = handler.UnicodeDecode
+
+	// IP 查询工具
+	routes["/api/ip/lookup"] = handler.IPLookup
+	routes["/api/ip/cidr"] = handler.IPCIDR
+
+	// 正则表达式工具
+	routes["/api/regex/match"] = handler.RegexMatch
+	routes["/api/regex/replace"] = handler.RegexReplace
+
+	// 字符串工具
+	routes["/api/string/count"] = handler.StringCount
+	routes["/api/string/to-upper"] = handler.StringToUpper
+	routes["/api/string/to-lower"] = handler.StringToLower
+	routes["/api/string/to-camel"] = handler.StringToCamel
+	routes["/api/string/to-snake"] = handler.StringToSnake
+	routes["/api/string/to-hex"] = handler.StringToHex
+	routes["/api/hex/to-string"] = handler.HexToString
+
+	// JWT 解码工具
+	routes["/api/jwt/decode"] = handler.JWTDecode
+
+	// LLM 对话工具
+	routes["/api/llm/chat"] = handler.LLMChat
+
+	// LLM 配置管理
+	routes["/api/llm/config/list"] = handler.LLMConfigList
+	routes["/api/llm/config/get"] = handler.LLMConfigGet
+	routes["/api/llm/config/get-default"] = handler.LLMConfigGetDefault
+	routes["/api/llm/config/create"] = handler.LLMConfigCreate
+	routes["/api/llm/config/update"] = handler.LLMConfigUpdate
+	routes["/api/llm/config/delete"] = handler.LLMConfigDelete
+	routes["/api/llm/config/set-default"] = handler.LLMConfigSetDefault
+	routes["/api/llm/messages/get"] = handler.LLMMessagesGet
+	routes["/api/llm/messages/save"] = handler.LLMMessagesSave
+	routes["/api/llm/messages/clear"] = handler.LLMMessagesClear
+
+	// API 测试器状态持久化
+	routes["/api/api-tester/state/get"] = handler.APITesterStateGet
+	routes["/api/api-tester/state/save"] = handler.APITesterStateSave
+
+	// 文档解析工具
+	routes["/api/document/docx-to-md"] = handler.DocxToMd
+	routes["/api/document/excel-to-md"] = handler.ExcelToMd
+	routes["/api/document/pdf-to-md"] = handler.PdfToMd
+
+	// 笔记工具
+	routes["/api/note/folder/list"] = handler.NoteFolderList
+	routes["/api/note/folder/create"] = handler.NoteFolderCreate
+	routes["/api/note/folder/update"] = handler.NoteFolderUpdate
+	routes["/api/note/folder/delete"] = handler.NoteFolderDelete
+	routes["/api/note/document/list"] = handler.NoteDocumentList
+	routes["/api/note/document/get"] = handler.NoteDocumentGet
+	routes["/api/note/document/create"] = handler.NoteDocumentCreate
+	routes["/api/note/document/update"] = handler.NoteDocumentUpdate
+	routes["/api/note/document/delete"] = handler.NoteDocumentDelete
+
+	// 网络工具
+	routes["/api/network/ping"] = handler.NetworkPing
+	routes["/api/network/port-probe"] = handler.NetworkPortProbe
+	routes["/api/network/ssh-probe"] = handler.NetworkSSHProbe
+
+	// Linux 命令查询工具
+	routes["/api/linux-command/list"] = handler.LinuxCommandList
+	routes["/api/linux-command/search"] = handler.LinuxCommandSearch
+	routes["/api/linux-command/get"] = handler.LinuxCommandGet
+	routes["/api/linux-command/create"] = handler.LinuxCommandCreate
+	routes["/api/linux-command/update"] = handler.LinuxCommandUpdate
+	routes["/api/linux-command/delete"] = handler.LinuxCommandDelete
+	routes["/api/linux-command/help"] = handler.LinuxCommandHelp
+
+	// 应用对接工具
+	routes["/api/integration/cloud/platforms"] = handler.IntegrationCloudPlatforms
+	routes["/api/integration/cloud/call"] = handler.IntegrationCloudCall
+	routes["/api/integration/wechat/apis"] = handler.IntegrationWeChatAPIs
+	routes["/api/integration/wechat/token"] = handler.IntegrationWeChatToken
+	routes["/api/integration/wechat/call"] = handler.IntegrationWeChatCall
+	routes["/api/integration/wecom/apis"] = handler.IntegrationWeComAPIs
+	routes["/api/integration/wecom/token"] = handler.IntegrationWeComToken
+	routes["/api/integration/wecom/call"] = handler.IntegrationWeComCall
+	routes["/api/integration/feishu/apis"] = handler.IntegrationFeishuAPIs
+	routes["/api/integration/feishu/token"] = handler.IntegrationFeishuToken
+	routes["/api/integration/feishu/call"] = handler.IntegrationFeishuCall
+
+	// API 代理工具
+	routes["/api/proxy/send"] = handler.APIProxy
+	routes["/api/proxy/openapi-import"] = handler.OpenAPIImport
+
+	return routes
+}
+
 func main() {
 	configFile := flag.String("c", "config/config.yaml", "配置文件路径")
 	showVersion := flag.Bool("v", false, "显示版本信息")
@@ -60,169 +211,21 @@ func main() {
 		logger.Infof("数据库: %s", config.C.Database.Path)
 	}
 
-	// 创建静态文件处理器
+	// 注册路由
+	routes := registerRoutes()
 	staticHandler := handler.NewStaticHandler(webFS)
 
-	// 注册路由
 	requestHandler := func(ctx *fasthttp.RequestCtx) {
 		path := string(ctx.Path())
 
-		switch {
-		case path == "/api/ping":
-			handler.Ping(ctx)
-
-		// 时间戳工具
-		case path == "/api/timestamp/now":
-			handler.TimestampNow(ctx)
-		case path == "/api/timestamp/to-time":
-			handler.TimestampToTime(ctx)
-		case path == "/api/timestamp/from-time":
-			handler.TimestampFromTime(ctx)
-
-		// 时间格式化工具
-		case path == "/api/timeformat/convert":
-			handler.TimeFormatConvert(ctx)
-
-		// Base64 编解码工具
-		case path == "/api/base64/encode":
-			handler.Base64Encode(ctx)
-		case path == "/api/base64/decode":
-			handler.Base64Decode(ctx)
-
-		// URL 编解码工具
-		case path == "/api/url/encode":
-			handler.URLEncode(ctx)
-		case path == "/api/url/decode":
-			handler.URLDecode(ctx)
-
-		// Hash 哈希工具
-		case path == "/api/hash/compute":
-			handler.HashCompute(ctx)
-
-		// 对称加密工具
-		case path == "/api/symmetric/compute":
-			handler.SymmetricCompute(ctx)
-		case path == "/api/symmetric/key-sizes":
-			handler.SymmetricKeySizes(ctx)
-
-		// 非对称加密工具
-		case path == "/api/asymmetric/encrypt":
-			handler.AsymmetricEncrypt(ctx)
-		case path == "/api/asymmetric/decrypt":
-			handler.AsymmetricDecrypt(ctx)
-		case path == "/api/asymmetric/sign":
-			handler.AsymmetricSign(ctx)
-		case path == "/api/asymmetric/verify":
-			handler.AsymmetricVerify(ctx)
-
-		// 密钥生成工具
-		case path == "/api/keygen/generate":
-			handler.KeyGenGenerate(ctx)
-		case path == "/api/keygen/types":
-			handler.KeyGenTypes(ctx)
-
-		// UUID / 随机字符串生成工具
-		case path == "/api/uuid/generate":
-			handler.UUIDGenerate(ctx)
-		case path == "/api/random/generate":
-			handler.RandomGenerate(ctx)
-
-		// JSON 工具
-		case path == "/api/json/format":
-			handler.JSONFormat(ctx)
-		case path == "/api/json/compress":
-			handler.JSONCompress(ctx)
-
-		// URL 编码/解码/解析/构建
-		case path == "/api/urlcode/encode":
-			handler.URLEncodeComponent(ctx)
-		case path == "/api/urlcode/decode":
-			handler.URLDecodeComponent(ctx)
-		case path == "/api/urlcode/parse":
-			handler.URLParse(ctx)
-		case path == "/api/urlcode/build":
-			handler.URLBuild(ctx)
-
-		// Unicode 编解码
-		case path == "/api/unicode/encode":
-			handler.UnicodeEncode(ctx)
-		case path == "/api/unicode/decode":
-			handler.UnicodeDecode(ctx)
-
-		// IP 查询工具
-		case path == "/api/ip/lookup":
-			handler.IPLookup(ctx)
-		case path == "/api/ip/cidr":
-			handler.IPCIDR(ctx)
-
-		// 正则表达式工具
-		case path == "/api/regex/match":
-			handler.RegexMatch(ctx)
-		case path == "/api/regex/replace":
-			handler.RegexReplace(ctx)
-
-		// 字符串工具
-		case path == "/api/string/count":
-			handler.StringCount(ctx)
-		case path == "/api/string/to-upper":
-			handler.StringToUpper(ctx)
-		case path == "/api/string/to-lower":
-			handler.StringToLower(ctx)
-		case path == "/api/string/to-camel":
-			handler.StringToCamel(ctx)
-		case path == "/api/string/to-snake":
-			handler.StringToSnake(ctx)
-		case path == "/api/string/to-hex":
-			handler.StringToHex(ctx)
-		case path == "/api/hex/to-string":
-			handler.HexToString(ctx)
-
-		// JWT 解码工具
-		case path == "/api/jwt/decode":
-			handler.JWTDecode(ctx)
-
-		// LLM 对话工具
-		case path == "/api/llm/chat":
-			handler.LLMChat(ctx)
-
-		// LLM 配置管理
-		case path == "/api/llm/config/list":
-			handler.LLMConfigList(ctx)
-		case path == "/api/llm/config/get":
-			handler.LLMConfigGet(ctx)
-		case path == "/api/llm/config/get-default":
-			handler.LLMConfigGetDefault(ctx)
-		case path == "/api/llm/config/create":
-			handler.LLMConfigCreate(ctx)
-		case path == "/api/llm/config/update":
-			handler.LLMConfigUpdate(ctx)
-		case path == "/api/llm/config/delete":
-			handler.LLMConfigDelete(ctx)
-		case path == "/api/llm/config/set-default":
-			handler.LLMConfigSetDefault(ctx)
-		case path == "/api/llm/messages/get":
-			handler.LLMMessagesGet(ctx)
-		case path == "/api/llm/messages/save":
-			handler.LLMMessagesSave(ctx)
-		case path == "/api/llm/messages/clear":
-			handler.LLMMessagesClear(ctx)
-
-		// API 测试器状态持久化
-		case path == "/api/api-tester/state/get":
-			handler.APITesterStateGet(ctx)
-		case path == "/api/api-tester/state/save":
-			handler.APITesterStateSave(ctx)
-
-		// API 代理工具
-		case path == "/api/proxy/send":
-			handler.APIProxy(ctx)
-		case path == "/api/proxy/openapi-import":
-			handler.OpenAPIImport(ctx)
-
-		default:
-			// 静态文件服务
-			staticHandler.Serve(ctx)
+		// 查找 API 路由
+		if h, ok := routes[path]; ok {
+			h(ctx)
+			return
 		}
+
+		// 静态文件服务
+		staticHandler.Serve(ctx)
 	}
 
 	// 应用中间件
@@ -241,6 +244,7 @@ func main() {
 	logger.Infof("服务监听: http://localhost%s", addr)
 	logger.Infof("日志文件: %s", config.C.Log.Filename)
 	logger.Infof("LLM 超时: 非流式 %ds / 流式 %ds", config.C.LLM.ChatTimeout, config.C.LLM.StreamTimeout)
+	logger.Infof("已注册 %d 个 API 路由", len(routes))
 	logger.Info("按 Ctrl+C 停止服务")
 
 	if err := server.ListenAndServe(addr); err != nil {

@@ -1,0 +1,112 @@
+# 飞书开放平台 API 定义配置
+
+base_url: "https://open.feishu.cn"
+auth_fields:
+  - key: app_id
+    label: App ID
+    type: text
+    placeholder: "cli_a1b2c3d4e5f6"
+    required: true
+  - key: app_secret
+    label: App Secret
+    type: password
+    placeholder: "a1b2c3d4e5f6..."
+    required: true
+  - key: tenant_access_token
+    label: Tenant Access Token
+    type: text
+    placeholder: "自动获取或手动填写"
+    required: false
+
+apis:
+  - id: fs-token
+    name: 获取Tenant Access Token
+    method: POST
+    path: /open-apis/auth/v3/tenant_access_token/internal
+    description: 通过app_id和app_secret获取tenant_access_token
+    category: 基础支持
+    body_template: '{"app_id":"{{app_id}}","app_secret":"{{app_secret}}"}'
+
+  - id: fs-token-refresh
+    name: 刷新User Access Token
+    method: POST
+    path: /open-apis/authen/v1/oidc/refresh_access_token
+    description: 刷新user_access_token
+    category: 基础支持
+
+  - id: fs-user-info
+    name: 获取用户信息
+    method: GET
+    path: /open-apis/contact/v3/users/{{user_id}}
+    description: 通过user_id获取用户信息
+    category: 用户管理
+
+  - id: fs-user-list
+    name: 获取用户列表
+    method: GET
+    path: /open-apis/contact/v3/users
+    description: 获取企业用户列表
+    category: 用户管理
+
+  - id: fs-dept-list
+    name: 获取部门列表
+    method: GET
+    path: /open-apis/contact/v3/departments/{{department_id}}/sub_departments
+    description: 获取子部门列表
+    category: 部门管理
+
+  - id: fs-msg-send
+    name: 发送消息
+    method: POST
+    path: /open-apis/im/v1/messages
+    description: 向指定用户/群发送消息
+    category: 消息管理
+
+  - id: fs-msg-get
+    name: 获取消息详情
+    method: GET
+    path: /open-apis/im/v1/messages/{{message_id}}
+    description: 获取消息详情
+    category: 消息管理
+
+  - id: fs-chat-list
+    name: 获取群列表
+    method: GET
+    path: /open-apis/im/v1/chats
+    description: 获取用户所在的群列表
+    category: 群组管理
+
+  - id: fs-chat-create
+    name: 创建群
+    method: POST
+    path: /open-apis/im/v1/chats
+    description: 创建群聊
+    category: 群组管理
+
+  - id: fs-doc-create
+    name: 创建文档
+    method: POST
+    path: /open-apis/doc/v2/create
+    description: 创建飞书文档
+    category: 文档管理
+
+  - id: fs-sheet-list
+    name: 获取电子表格列表
+    method: GET
+    path: /open-apis/sheets/v3/spreadsheets
+    description: 获取电子表格列表
+    category: 表格管理
+
+  - id: fs-calendar-list
+    name: 获取日历列表
+    method: GET
+    path: /open-apis/calendar/v4/calendars
+    description: 获取日历列表
+    category: 日历管理
+
+  - id: fs-approval-list
+    name: 获取审批定义列表
+    method: GET
+    path: /open-apis/approval/v4/approvals
+    description: 获取审批定义列表
+    category: 审批管理

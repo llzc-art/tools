@@ -30,6 +30,12 @@ body {
 }
 
 /* 工具面板 */
+.tool-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .tool-panel h2 {
   font-size: 1.2rem;
   font-weight: 700;
