@@ -94,6 +94,13 @@
           <WeComAPITool v-else-if="currentTool === 'wecom-api'" />
           <FeishuAPITool v-else-if="currentTool === 'feishu-api'" />
           <DataConvertTool v-else-if="currentTool === 'data-convert'" />
+          <BaseConvertTool v-else-if="currentTool === 'base-convert'" />
+          <CronTool v-else-if="currentTool === 'cron'" />
+          <MarkdownPreviewTool v-else-if="currentTool === 'markdown'" />
+          <JsonToJavaTool v-else-if="currentTool === 'json-to-java'" />
+          <JsonToGoTool v-else-if="currentTool === 'json-to-go'" />
+          <JavaToJsonTool v-else-if="currentTool === 'java-to-json'" />
+          <GoToJsonTool v-else-if="currentTool === 'go-to-json'" />
         </div>
       </main>
     </div>
@@ -165,6 +172,13 @@ import WeChatAPITool from './components/WeChatAPITool.vue'
 import WeComAPITool from './components/WeComAPITool.vue'
 import FeishuAPITool from './components/FeishuAPITool.vue'
 import DataConvertTool from './components/DataConvertTool.vue'
+import BaseConvertTool from './components/BaseConvertTool.vue'
+import CronTool from './components/CronTool.vue'
+import MarkdownPreviewTool from './components/MarkdownPreviewTool.vue'
+import JsonToJavaTool from './components/JsonToJavaTool.vue'
+import JsonToGoTool from './components/JsonToGoTool.vue'
+import JavaToJsonTool from './components/JavaToJsonTool.vue'
+import GoToJsonTool from './components/GoToJsonTool.vue'
 
 const currentTool = ref(localStorage.getItem('last-tool') || 'timestamp')
 const searchQuery = ref('')
@@ -214,6 +228,7 @@ const categories = [
       { id: 'json', name: 'JSON美化', icon: '📋' },
       { id: 'data-convert', name: '格式转换', icon: '🔄' },
       { id: 'regex', name: '正则匹配', icon: '🔎' },
+      { id: 'base-convert', name: '进制转换', icon: '🔢' },
     ]
   },
   {
@@ -222,6 +237,7 @@ const categories = [
     tools: [
       { id: 'timestamp', name: '时间戳转换', icon: '⏱' },
       { id: 'timeformat', name: '日期格式化', icon: '📅' },
+      { id: 'cron', name: 'Cron解析', icon: '⏰' },
     ]
   },
   {
@@ -241,6 +257,17 @@ const categories = [
       { id: 'docx-to-md', name: 'DOCX转MD', icon: '📄' },
       { id: 'excel-to-md', name: 'Excel转MD', icon: '📊' },
       { id: 'pdf-to-md', name: 'PDF转MD', icon: '📑' },
+      { id: 'markdown', name: 'Markdown预览', icon: '📝' },
+    ]
+  },
+  {
+    id: 'codegen',
+    label: '代码生成',
+    tools: [
+      { id: 'json-to-java', name: 'JSON→Java', icon: '☕' },
+      { id: 'json-to-go', name: 'JSON→Go', icon: '🐹' },
+      { id: 'java-to-json', name: 'Java→JSON', icon: '📋' },
+      { id: 'go-to-json', name: 'Go→JSON', icon: '📋' },
     ]
   },
   {
