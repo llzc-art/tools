@@ -169,6 +169,14 @@ func registerRoutes() map[string]fasthttp.RequestHandler {
 	routes["/api/proxy/send"] = handler.APIProxy
 	routes["/api/proxy/openapi-import"] = handler.OpenAPIImport
 
+	// 证件照工具
+	routes["/api/idphoto/process"] = handler.IDPhotoProcess
+	routes["/api/idphoto/presets"] = handler.IDPhotoPresets
+	routes["/api/idphoto/print-layout"] = handler.IDPhotoPrintLayout
+
+	// DDL 解析工具
+	routes["/api/ddl/parse"] = handler.DDLParse
+
 	return routes
 }
 
@@ -238,6 +246,7 @@ func main() {
 		Name:               "tools-server",
 		MaxConnsPerIP:      500,
 		MaxRequestsPerConn: 1000,
+		MaxRequestBodySize: 32 * 1024 * 1024, // 最大请求体 32MB，支持图片上传
 	}
 
 	logger.Infof("攻城师天梯 v%s 启动中...", Version)

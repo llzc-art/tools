@@ -101,6 +101,8 @@
           <JsonToGoTool v-else-if="currentTool === 'json-to-go'" />
           <JavaToJsonTool v-else-if="currentTool === 'java-to-json'" />
           <GoToJsonTool v-else-if="currentTool === 'go-to-json'" />
+          <IDPhotoTool v-else-if="currentTool === 'id-photo'" />
+          <DDLParserTool v-else-if="currentTool === 'ddl-parser'" />
         </div>
       </main>
     </div>
@@ -179,6 +181,8 @@ import JsonToJavaTool from './components/JsonToJavaTool.vue'
 import JsonToGoTool from './components/JsonToGoTool.vue'
 import JavaToJsonTool from './components/JavaToJsonTool.vue'
 import GoToJsonTool from './components/GoToJsonTool.vue'
+import IDPhotoTool from './components/IDPhotoTool.vue'
+import DDLParserTool from './components/DDLParserTool.vue'
 
 const currentTool = ref(localStorage.getItem('last-tool') || 'timestamp')
 const searchQuery = ref('')
@@ -190,6 +194,7 @@ const categories = [
     label: '开发调试',
     tools: [
       { id: 'api-tester', name: 'API 调试', icon: '🔌' },
+      { id: 'ddl-parser', name: 'DDL解析', icon: '🗄️' },
     ]
   },
   {
@@ -275,6 +280,13 @@ const categories = [
     label: '笔记',
     tools: [
       { id: 'note', name: '我的笔记', icon: '📝' },
+    ]
+  },
+  {
+    id: 'image',
+    label: '图片工具',
+    tools: [
+      { id: 'id-photo', name: '证件照生成', icon: '📸' },
     ]
   },
   {

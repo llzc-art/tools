@@ -3,6 +3,7 @@ module lelezc.com/tools
 go 1.25.0
 
 require (
+	github.com/disintegration/imaging v1.6.2
 	github.com/tjfoc/gmsm v1.4.1
 	github.com/tsawler/tabula v1.6.6
 	github.com/valyala/fasthttp v1.71.0
