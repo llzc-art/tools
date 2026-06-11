@@ -189,21 +189,21 @@ const searchQuery = ref('')
 const sidebarOpen = ref(true)
 
 const categories = [
-  {
-    id: 'dev',
-    label: '开发调试',
+   {
+    id: 'notes',
+    label: '笔记',
     tools: [
-      { id: 'api-tester', name: 'API 调试', icon: '🔌' },
-      { id: 'ddl-parser', name: 'DDL解析', icon: '🗄️' },
+      { id: 'note', name: '我的笔记', icon: '📝' },
     ]
   },
   {
-    id: 'ai',
-    label: '人工智能',
+    id: 'image',
+    label: '图片工具',
     tools: [
-      { id: 'llm-chat', name: 'AI 对话', icon: '💬' },
+      { id: 'id-photo', name: '证件照生成', icon: '📸' },
     ]
   },
+  
   {
     id: 'codec',
     label: '字符编码',
@@ -246,13 +246,13 @@ const categories = [
     ]
   },
   {
-    id: 'network',
-    label: '网络工具',
+    id: 'codegen',
+    label: '代码生成',
     tools: [
-      { id: 'ip', name: 'IP 查询', icon: '🌍' },
-      { id: 'ping', name: 'Ping 测试', icon: '📡' },
-      { id: 'port-probe', name: '端口探测', icon: '🔌' },
-      { id: 'ssh-probe', name: 'SSH 探测', icon: '🔐' },
+      { id: 'json-to-java', name: 'JSON→Java', icon: '☕' },
+      { id: 'json-to-go', name: 'JSON→Go', icon: '🐹' },
+      { id: 'java-to-json', name: 'Java→JSON', icon: '📋' },
+      { id: 'go-to-json', name: 'Go→JSON', icon: '📋' },
     ]
   },
   {
@@ -266,34 +266,35 @@ const categories = [
     ]
   },
   {
-    id: 'codegen',
-    label: '代码生成',
-    tools: [
-      { id: 'json-to-java', name: 'JSON→Java', icon: '☕' },
-      { id: 'json-to-go', name: 'JSON→Go', icon: '🐹' },
-      { id: 'java-to-json', name: 'Java→JSON', icon: '📋' },
-      { id: 'go-to-json', name: 'Go→JSON', icon: '📋' },
-    ]
-  },
-  {
-    id: 'notes',
-    label: '笔记',
-    tools: [
-      { id: 'note', name: '我的笔记', icon: '📝' },
-    ]
-  },
-  {
-    id: 'image',
-    label: '图片工具',
-    tools: [
-      { id: 'id-photo', name: '证件照生成', icon: '📸' },
-    ]
-  },
-  {
     id: 'linux',
     label: 'Linux',
     tools: [
       { id: 'linux-command', name: '命令查询', icon: '🐧' },
+    ]
+  },
+  {
+    id: 'dev',
+    label: '开发调试',
+    tools: [
+      { id: 'api-tester', name: 'API 调试', icon: '🔌' },
+      { id: 'ddl-parser', name: 'DDL解析', icon: '🗄️' },
+    ]
+  },
+  {
+    id: 'ai',
+    label: '人工智能',
+    tools: [
+      { id: 'llm-chat', name: 'AI 对话', icon: '💬' },
+    ]
+  },
+  {
+    id: 'network',
+    label: '网络工具',
+    tools: [
+      { id: 'ip', name: 'IP 查询', icon: '🌍' },
+      { id: 'ping', name: 'Ping 测试', icon: '📡' },
+      { id: 'port-probe', name: '端口探测', icon: '🔌' },
+      { id: 'ssh-probe', name: 'SSH 探测', icon: '🔐' },
     ]
   },
   {
