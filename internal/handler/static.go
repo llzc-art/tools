@@ -56,6 +56,11 @@ func (h *StaticHandler) Serve(ctx *fasthttp.RequestCtx) {
 		ctx.SetContentType("text/css; charset=utf-8")
 	} else if strings.HasSuffix(path, ".js") {
 		ctx.SetContentType("application/javascript; charset=utf-8")
+	} else if strings.HasSuffix(path, ".mjs") {
+		// .mjs 是 ES Module 的 JavaScript 文件，浏览器做严格 MIME 检查
+		// 必须设置 application/javascript，否则动态 import() 会因 MIME 不匹配而失败
+		// （onnxruntime-web 1.21 在 worker 内会动态 import pthread proxy worker .mjs）
+		ctx.SetContentType("application/javascript; charset=utf-8")
 	} else if strings.HasSuffix(path, ".json") {
 		ctx.SetContentType("application/json; charset=utf-8")
 	} else if strings.HasSuffix(path, ".svg") {
@@ -64,6 +69,11 @@ func (h *StaticHandler) Serve(ctx *fasthttp.RequestCtx) {
 		ctx.SetContentType("image/png")
 	} else if strings.HasSuffix(path, ".ico") {
 		ctx.SetContentType("image/x-icon")
+	} else if strings.HasSuffix(path, ".wasm") {
+		// WebAssembly 流式编译要求严格的 application/wasm MIME 类型
+		// 否则 WebAssembly.compile() 会因 MIME 不匹配而失败，
+		// ONNX Runtime Web 会回退到 ArrayBuffer 实例化方式（性能/内存更差）
+		ctx.SetContentType("application/wasm")
 	}
 
 	// 读取文件内容

@@ -94,6 +94,33 @@ func createTables() error {
 			created_at DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
 			updated_at DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
 		)`,
+
+		// 文章写作和发布工具
+		`CREATE TABLE IF NOT EXISTS article (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL DEFAULT '',
+			content TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'draft',
+			created_at DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
+			updated_at DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS article_channel (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL DEFAULT '',
+			channel_type TEXT NOT NULL DEFAULT '',
+			config TEXT NOT NULL DEFAULT '{}',
+			enabled INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
+			updated_at DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS article_publish_log (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			article_id INTEGER NOT NULL,
+			channel_id INTEGER NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			message TEXT NOT NULL DEFAULT '',
+			published_at DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
+		)`,
 	}
 
 	for _, s := range stmts {

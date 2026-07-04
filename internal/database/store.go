@@ -488,3 +488,224 @@ func DeleteLinuxCommand(id int64) error {
 	_, err := DB.Exec("DELETE FROM linux_command WHERE id = ?", id)
 	return err
 }
+
+// --- Article ---
+
+// Article 文章
+type Article struct {
+	ID        int64  `json:"id"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	Status    string `json:"status"` // draft, published
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// ListArticles 获取所有文章
+func ListArticles() ([]Article, error) {
+	rows, err := DB.Query("SELECT id, title, content, status, created_at, updated_at FROM article ORDER BY updated_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var articles []Article
+	for rows.Next() {
+		var a Article
+		if err := rows.Scan(&a.ID, &a.Title, &a.Content, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			return nil, err
+		}
+		articles = append(articles, a)
+	}
+	return articles, nil
+}
+
+// GetArticle 获取单篇文章
+func GetArticle(id int64) (*Article, error) {
+	var a Article
+	err := DB.QueryRow("SELECT id, title, content, status, created_at, updated_at FROM article WHERE id = ?", id).
+		Scan(&a.ID, &a.Title, &a.Content, &a.Status, &a.CreatedAt, &a.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
+// CreateArticle 创建文章
+func CreateArticle(a *Article) error {
+	now := time.Now().Format("2006-01-02 15:04:05")
+	result, err := DB.Exec("INSERT INTO article (title, content, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		a.Title, a.Content, a.Status, now, now)
+	if err != nil {
+		return err
+	}
+	a.ID, _ = result.LastInsertId()
+	a.CreatedAt = now
+	a.UpdatedAt = now
+	return nil
+}
+
+// UpdateArticle 更新文章
+func UpdateArticle(a *Article) error {
+	now := time.Now().Format("2006-01-02 15:04:05")
+	_, err := DB.Exec("UPDATE article SET title=?, content=?, status=?, updated_at=? WHERE id=?",
+		a.Title, a.Content, a.Status, now, a.ID)
+	return err
+}
+
+// DeleteArticle 删除文章（同时删除发布日志）
+func DeleteArticle(id int64) error {
+	tx, err := DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	tx.Exec("DELETE FROM article_publish_log WHERE article_id = ?", id)
+	_, err = tx.Exec("DELETE FROM article WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// --- Article Channel ---
+
+// ArticleChannel 发布渠道配置
+type ArticleChannel struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	ChannelType string `json:"channel_type"` // wechat, csdn, tencent_cloud, juejin, custom
+	Config      string `json:"config"`       // JSON 格式的配置（API密钥等）
+	Enabled     bool   `json:"enabled"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+// ListArticleChannels 获取所有渠道
+func ListArticleChannels() ([]ArticleChannel, error) {
+	rows, err := DB.Query("SELECT id, name, channel_type, config, enabled, created_at, updated_at FROM article_channel ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var channels []ArticleChannel
+	for rows.Next() {
+		var c ArticleChannel
+		var enabled int
+		if err := rows.Scan(&c.ID, &c.Name, &c.ChannelType, &c.Config, &enabled, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		c.Enabled = enabled == 1
+		channels = append(channels, c)
+	}
+	return channels, nil
+}
+
+// GetArticleChannel 获取单个渠道
+func GetArticleChannel(id int64) (*ArticleChannel, error) {
+	var c ArticleChannel
+	var enabled int
+	err := DB.QueryRow("SELECT id, name, channel_type, config, enabled, created_at, updated_at FROM article_channel WHERE id = ?", id).
+		Scan(&c.ID, &c.Name, &c.ChannelType, &c.Config, &enabled, &c.CreatedAt, &c.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	c.Enabled = enabled == 1
+	return &c, nil
+}
+
+// CreateArticleChannel 创建渠道
+func CreateArticleChannel(c *ArticleChannel) error {
+	now := time.Now().Format("2006-01-02 15:04:05")
+	enabled := 0
+	if c.Enabled {
+		enabled = 1
+	}
+	result, err := DB.Exec("INSERT INTO article_channel (name, channel_type, config, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+		c.Name, c.ChannelType, c.Config, enabled, now, now)
+	if err != nil {
+		return err
+	}
+	c.ID, _ = result.LastInsertId()
+	c.CreatedAt = now
+	c.UpdatedAt = now
+	return nil
+}
+
+// UpdateArticleChannel 更新渠道
+func UpdateArticleChannel(c *ArticleChannel) error {
+	now := time.Now().Format("2006-01-02 15:04:05")
+	enabled := 0
+	if c.Enabled {
+		enabled = 1
+	}
+	_, err := DB.Exec("UPDATE article_channel SET name=?, channel_type=?, config=?, enabled=?, updated_at=? WHERE id=?",
+		c.Name, c.ChannelType, c.Config, enabled, now, c.ID)
+	return err
+}
+
+// DeleteArticleChannel 删除渠道
+func DeleteArticleChannel(id int64) error {
+	_, err := DB.Exec("DELETE FROM article_channel WHERE id = ?", id)
+	return err
+}
+
+// --- Article Publish Log ---
+
+// ArticlePublishLog 发布日志
+type ArticlePublishLog struct {
+	ID          int64  `json:"id"`
+	ArticleID   int64  `json:"article_id"`
+	ChannelID   int64  `json:"channel_id"`
+	ChannelName string `json:"channel_name"`
+	Status      string `json:"status"` // success, failed
+	Message     string `json:"message"`
+	PublishedAt string `json:"published_at"`
+}
+
+// ListArticlePublishLogs 获取文章的发布日志
+func ListArticlePublishLogs(articleID int64) ([]ArticlePublishLog, error) {
+	rows, err := DB.Query(`
+		SELECT l.id, l.article_id, l.channel_id, c.name, l.status, l.message, l.published_at
+		FROM article_publish_log l
+		LEFT JOIN article_channel c ON l.channel_id = c.id
+		WHERE l.article_id = ?
+		ORDER BY l.published_at DESC
+	`, articleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []ArticlePublishLog
+	for rows.Next() {
+		var l ArticlePublishLog
+		var channelName sql.NullString
+		if err := rows.Scan(&l.ID, &l.ArticleID, &l.ChannelID, &channelName, &l.Status, &l.Message, &l.PublishedAt); err != nil {
+			return nil, err
+		}
+		if channelName.Valid {
+			l.ChannelName = channelName.String
+		}
+		logs = append(logs, l)
+	}
+	return logs, nil
+}
+
+// CreateArticlePublishLog 创建发布日志
+func CreateArticlePublishLog(log *ArticlePublishLog) error {
+	result, err := DB.Exec("INSERT INTO article_publish_log (article_id, channel_id, status, message, published_at) VALUES (?, ?, ?, ?, datetime('now','localtime'))",
+		log.ArticleID, log.ChannelID, log.Status, log.Message)
+	if err != nil {
+		return err
+	}
+	log.ID, _ = result.LastInsertId()
+	return nil
+}

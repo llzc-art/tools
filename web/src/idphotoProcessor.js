@@ -1,6 +1,21 @@
 /**
  * 证件照前端处理器
- * 集成 @imgly/background-removal (AI抠图) + Canvas API (合成/裁剪/缩放)
+ *
+ * 完整前端流程（模型串联逻辑）：
+ *   上传原图 → YuNet人脸检测(5关键点) → 旋转矫正 → 人像抠图(MODNet/BiRefNet)
+ *   → Canvas合成纯色背景 → 按国标比例裁切 → 输出300DPI高清PNG
+ *
+ * 抠图引擎: onnxruntime-web + WebWorker
+ *   - MODNet (512x512, INT8~6.6MB): 轻量快速，适合移动端/H5
+ *   - BiRefNet-portrait (1024x1024, FP16~490MB): 高精发丝级，适合打印/政务标准
+ *   - YuNet (320x320, ~233KB): 人脸检测+5关键点，用于旋转矫正和头部定位
+ *
+ * Canvas API 负责: 裁剪/缩放/合成背景/Alpha精修/颜色去污染
+ *
+ * 避坑建议：
+ *   - 所有模型优先使用量化版本(INT8/FP16)，体积减半、速度翻倍
+ *   - 模型放 Web Worker 推理，避免阻塞页面渲染
+ *   - 模型文件用 IndexedDB 缓存，二次访问无需重新下载
  */
 
 // 预设背景色
@@ -13,30 +28,363 @@ export const BG_COLORS = {
 }
 
 /**
- * 步骤1: AI 抠图 - 使用 @imgly/background-removal 移除背景
+ * 模型类型及下载配置
+ *
+ * 下载源：ModelScope（魔搭社区），国内访问速度快、稳定
+ * ModelScope URL 格式: https://www.modelscope.cn/models/{owner}/{model}/resolve/master/{path}
+ *
+ * 模型选型遵循参考资料：
+ *   - 方案A(移动端): MODNet INT8量化 ~6.6MB，加载快、手机不卡顿
+ *   - 方案B(PC端): BiRefNet-portrait FP16 ~490MB，发丝细节完美
+ *
+ * 可在界面输入自定义 URL 覆盖默认下载地址。
+ */
+export const MODEL_CONFIGS = {
+  modnet: {
+    label: 'MODNet（轻量快速）',
+    desc: '512px, ~6.6MB(INT8量化), 适合手机/H5快速出图',
+    size: 512,
+    // ModelScope: Xenova/modnet 仓库，提供 INT8/FP16/FP32 多种量化版本
+    urls: [
+      'https://www.modelscope.cn/models/Xenova/modnet/resolve/master/onnx/model_quantized.onnx',
+      'https://www.modelscope.cn/models/Xenova/modnet/resolve/master/onnx/model_fp16.onnx',
+      'https://www.modelscope.cn/models/Xenova/modnet/resolve/master/onnx/model.onnx',
+    ],
+  },
+  birefnet: {
+    label: 'BiRefNet-RMBG2（高精发丝级）',
+    desc: '1024px, ~490MB(FP16), 发丝细节完美，适合打印/标准证件照',
+    size: 1024,
+    // ModelScope: onnx-community/BiRefNet-portrait-ONNX (FP16/FP32)
+    urls: [
+      'https://www.modelscope.cn/models/onnx-community/BiRefNet-portrait-ONNX/resolve/master/onnx/model_fp16.onnx',
+      'https://www.modelscope.cn/models/onnx-community/BiRefNet-portrait-ONNX/resolve/master/onnx/model.onnx',
+      'https://www.modelscope.cn/models/AI-ModelScope/RMBG-2.0/resolve/master/onnx/model.onnx',
+    ],
+  },
+}
+
+/**
+ * YuNet 人脸检测模型配置
+ *
+ * 用途：检测人脸 + 5关键点（右眼、左眼、鼻尖、右嘴角、左嘴角）
+ *       → 矫正旋转（基于双眼连线角度）→ 计算头部区域
+ *
+ * 注意：YuNet ONNX 暂未上架 ModelScope，使用 HuggingFace 国内镜像(hf-mirror.com)。
+ *       模型仅 ~233KB，对下载速度和流量无影响。
+ */
+export const FACE_MODEL_CONFIG = {
+  label: 'YuNet 人脸检测',
+  size: 320,
+  urls: [
+    'https://hf-mirror.com/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx',
+    'https://hf-mirror.com/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar_int8.onnx',
+  ],
+}
+
+// ========== WebWorker 管理 ==========
+
+let workerInstance = null
+let workerReady = false
+let workerModelType = null
+let workerPendingResolve = null
+let workerPendingReject = null
+let workerOnProgress = null
+
+/**
+ * 获取或创建 Worker 实例
+ */
+function getWorker() {
+  if (!workerInstance) {
+    workerInstance = new Worker(
+      new URL('./workers/idphotoWorker.js', import.meta.url),
+      { type: 'module' }
+    )
+    workerInstance.onmessage = handleWorkerMessage
+    workerInstance.onerror = (err) => {
+      console.error('Worker error:', err)
+      if (workerPendingReject) {
+        workerPendingReject(new Error('Worker 异常: ' + (err.message || '未知错误')))
+        workerPendingReject = null
+        workerPendingResolve = null
+      }
+    }
+  }
+  return workerInstance
+}
+
+function handleWorkerMessage(event) {
+  const { type, progress, stage, fromCache, maskImageBitmap, originalWidth, originalHeight, error, message } = event.data
+
+  switch (type) {
+    case 'progress': {
+      if (workerOnProgress) {
+        if (stage === 'download') {
+          workerOnProgress(progress, fromCache ? 'using_cache' : 'downloading_model')
+        } else {
+          workerOnProgress(progress * 0.3 + 0.7, 'inference') // 推理占后70%
+        }
+      }
+      break
+    }
+
+    case 'modelLoaded': {
+      workerReady = true
+      break
+    }
+
+    case 'maskReady': {
+      if (workerPendingResolve && maskImageBitmap) {
+        // 将 ImageBitmap 转换为 HTMLImageElement
+        const canvas = document.createElement('canvas')
+        canvas.width = originalWidth
+        canvas.height = originalHeight
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(maskImageBitmap, 0, 0)
+        maskImageBitmap.close() // 释放 ImageBitmap
+        
+        const dataUrl = canvas.toDataURL('image/png')
+        loadImage(dataUrl).then(img => {
+          const resolve = workerPendingResolve
+          workerPendingResolve = null
+          workerPendingReject = null
+          resolve(img)
+        })
+      }
+      break
+    }
+
+    case 'error': {
+      if (workerPendingReject) {
+        const reject = workerPendingReject
+        workerPendingResolve = null
+        workerPendingReject = null
+        reject(new Error(message || error || '未知错误'))
+      }
+      break
+    }
+  }
+}
+
+/**
+ * 确保模型已加载到 Worker
+ * 同时加载抠图模型和人脸检测模型(YuNet)，YuNet加载失败不影响抠图
+ * @param {string} modelType - 'modnet' | 'birefnet'
+ * @param {string} [modelUrl] - 自定义模型 URL
+ * @param {Function} [onProgress] - 进度回调 (0~1)
+ * @returns {Promise<void>}
+ */
+export async function ensureModelLoaded(modelType = 'modnet', modelUrl, onProgress) {
+  const config = MODEL_CONFIGS[modelType] || MODEL_CONFIGS.modnet
+  
+  // 如果用户提供了自定义 URL，替换 urls 列表的第一个
+  let urls = [...config.urls]
+  if (modelUrl) {
+    urls = [modelUrl, ...config.urls]
+  }
+
+  // 如果同模型已加载，直接返回
+  if (workerReady && workerModelType === modelType) return
+
+  // 如果模型不同，需要销毁重建 Worker
+  if (workerInstance && workerModelType !== modelType) {
+    destroyWorker()
+  }
+
+  workerOnProgress = onProgress || null
+  const worker = getWorker()
+
+  return new Promise((resolve, reject) => {
+    const checkReady = () => {
+      if (workerReady) {
+        resolve()
+        return
+      }
+      // 等待 modelLoaded 消息
+      const origHandler = worker.onmessage
+      worker.onmessage = (event) => {
+        if (event.data.type === 'modelLoaded') {
+          workerReady = true
+          workerModelType = modelType
+          worker.onmessage = origHandler
+          resolve()
+        } else if (event.data.type === 'error') {
+          worker.onmessage = origHandler
+          reject(new Error(event.data.message || '模型加载失败'))
+        } else if (event.data.type === 'progress') {
+          // 进度透传
+          if (workerOnProgress) {
+            const p = event.data.progress * 0.3 // 模型下载占总进度的前30%
+            workerOnProgress(p, event.data.stage)
+          }
+        }
+      }
+    }
+
+    // 同时传递抠图模型和人脸检测模型(YuNet)的下载地址
+    worker.postMessage({
+      type: 'loadModel',
+      modelType,
+      urls,
+      faceModelUrls: FACE_MODEL_CONFIG.urls,
+    })
+    
+    // 超时处理（每个 URL 尝试 30s，总共最多）
+    const timeout = setTimeout(() => {
+      if (!workerReady) {
+        reject(new Error('模型加载超时，请检查网络或尝试换一个地址'))
+      }
+    }, Math.max(60000, urls.length * 30000))
+
+    checkReady()
+    // fallback: 如果 modelLoaded 到达时 checkReady 还没解除
+    const interval = setInterval(() => {
+      if (workerReady) {
+        clearTimeout(timeout)
+        clearInterval(interval)
+        resolve()
+      }
+    }, 200)
+  })
+}
+
+/**
+ * 从本地文件加载模型到 Worker
+ *
+ * 用途：用户通过文件选择器选择本地 .onnx 文件后，读取为 ArrayBuffer 传入 Worker，
+ *       跳过网络下载，适合内网/离线环境或已手动下载好模型的场景。
+ *
+ * @param {string} modelType - 'modnet' | 'birefnet'（仅用于标记当前加载的模型类型）
+ * @param {File|ArrayBuffer} modelFile - 抠图模型文件（.onnx）
+ * @param {File|ArrayBuffer} [faceModelFile] - YuNet 人脸检测模型文件（可选，省略则自动从 URL 下载）
+ * @param {Function} [onProgress] - 进度回调 (0~1)
+ * @returns {Promise<void>}
+ */
+export async function ensureModelLoadedFromFile(modelType = 'modnet', modelFile, faceModelFile, onProgress) {
+  // 如果同模型已加载，直接返回
+  if (workerReady && workerModelType === modelType) return
+
+  // 如果模型不同，需要销毁重建 Worker
+  if (workerInstance && workerModelType !== modelType) {
+    destroyWorker()
+  }
+
+  workerOnProgress = onProgress || null
+  const worker = getWorker()
+
+  // 读取文件为 ArrayBuffer（如果传入的已经是 ArrayBuffer 则直接使用）
+  const modelBuffer = modelFile instanceof ArrayBuffer ? modelFile : await modelFile.arrayBuffer()
+
+  // YuNet 模型文件（可选）
+  let faceModelBuffer = null
+  if (faceModelFile) {
+    faceModelBuffer = faceModelFile instanceof ArrayBuffer ? faceModelFile : await faceModelFile.arrayBuffer()
+  }
+
+  return new Promise((resolve, reject) => {
+    const origHandler = worker.onmessage
+    worker.onmessage = (event) => {
+      if (event.data.type === 'modelLoaded') {
+        workerReady = true
+        workerModelType = modelType
+        worker.onmessage = origHandler
+        resolve()
+      } else if (event.data.type === 'error') {
+        worker.onmessage = origHandler
+        reject(new Error(event.data.message || '本地模型加载失败'))
+      } else if (event.data.type === 'progress') {
+        if (workerOnProgress) {
+          // 本地加载无下载步骤，进度直接映射到前30%
+          workerOnProgress(event.data.progress * 0.3, event.data.stage)
+        }
+      }
+    }
+
+    // 传输 ArrayBuffer 的所有权给 Worker（零拷贝）
+    const transferList = [modelBuffer]
+    if (faceModelBuffer) transferList.push(faceModelBuffer)
+
+    worker.postMessage(
+      {
+        type: 'loadModelFromBuffer',
+        modelBuffer,
+        faceModelBuffer,
+      },
+      transferList
+    )
+
+    // 超时处理（本地文件加载通常很快，给 60s 余量）
+    const timeout = setTimeout(() => {
+      if (!workerReady) {
+        worker.onmessage = origHandler
+        reject(new Error('本地模型加载超时，请检查文件是否为有效的 ONNX 模型'))
+      }
+    }, 60000)
+
+    // fallback 轮询
+    const interval = setInterval(() => {
+      if (workerReady) {
+        clearTimeout(timeout)
+        clearInterval(interval)
+        worker.onmessage = origHandler
+        resolve()
+      }
+    }, 200)
+  })
+}
+
+/**
+ * 销毁 Worker 实例
+ */
+export function destroyWorker() {
+  if (workerInstance) {
+    workerInstance.terminate()
+    workerInstance = null
+    workerReady = false
+    workerModelType = null
+    workerPendingResolve = null
+    workerPendingReject = null
+    workerOnProgress = null
+  }
+}
+
+/**
+ * 步骤1: AI 抠图 - 通过 WebWorker + onnxruntime-web 移除背景
+ * 内部流程：YuNet人脸检测 → 旋转矫正 → MODNet/BiRefNet抠图推理
  * @param {File|Blob} imageFile - 原始图片文件
  * @param {Function} onProgress - 进度回调 (0~1)
+ * @param {object} [options] - { modelType: 'modnet'|'birefnet', alignFace: boolean }
  * @returns {Promise<HTMLImageElement>} 透明背景的人像图片
  */
-export async function removeImageBackground(imageFile, onProgress) {
-  // 动态导入，避免首屏加载大体积的 ONNX Runtime
-  const { removeBackground: aiRemoveBackground } = await import('@imgly/background-removal')
-  
-  const blob = await aiRemoveBackground(imageFile, {
-    model: 'medium',       // small/medium/large - medium 平衡速度与质量
-    output: {
-      format: 'image/png',
-      quality: 0.9,
-    },
-    progress: (key, current, total) => {
-      if (onProgress && total > 0) {
-        onProgress(current / total)
-      }
-    },
-  })
+export async function removeImageBackground(imageFile, onProgress, options = {}) {
+  const { modelType = 'modnet', alignFace = true } = options
 
-  const url = URL.createObjectURL(blob)
-  return loadImage(url)
+  if (!workerReady) {
+    throw new Error('模型尚未加载，请先调用 ensureModelLoaded()')
+  }
+
+  workerOnProgress = onProgress || null
+
+  // 将 File/Blob 转为 ImageBitmap
+  const blob = imageFile instanceof Blob ? imageFile : new Blob([imageFile])
+  const imageBitmap = await createImageBitmap(blob)
+
+  const worker = getWorker()
+
+  return new Promise((resolve, reject) => {
+    workerPendingResolve = resolve
+    workerPendingReject = reject
+
+    worker.postMessage(
+      {
+        type: 'removeBackground',
+        imageBitmap,
+        modelType,
+        alignFace,
+      },
+      [imageBitmap] // transfer ownership
+    )
+  })
 }
 
 /**
@@ -299,7 +647,190 @@ export function smartCropAndResize(img, targetW, targetH, options = {}) {
 }
 
 /**
+ * Alpha通道形态学精修 - 填充抠图产生的空洞，去除噪点
+ * 对标 HivisionIDPhotos 的后处理思路，解决"人像后面出现白斑"问题
+ * @param {HTMLCanvasElement} fgCanvas - 抠图后的透明前景画布
+ * @param {object} [options] - 可选参数
+ * @param {number} [options.closeRadius=4] - 闭运算半径（填充空洞），越大填充越多
+ * @param {number} [options.openRadius=1] - 开运算半径（去除噪点）
+ * @returns {HTMLCanvasElement} 精修后的画布
+ */
+function refineAlphaMatte(fgCanvas, options = {}) {
+  const { closeRadius = 4, openRadius = 1 } = options
+  const w = fgCanvas.width
+  const h = fgCanvas.height
+  const ctx = fgCanvas.getContext('2d')
+  const imageData = ctx.getImageData(0, 0, w, h)
+  const pixels = imageData.data
+  const totalPixels = w * h
+
+  // 提取 alpha 通道
+  const alpha = new Uint8Array(totalPixels)
+  for (let i = 0; i < totalPixels; i++) {
+    alpha[i] = pixels[i * 4 + 3]
+  }
+
+  // 1. 生成二值蒙版（alpha > 128 视为前景）
+  const binaryMask = new Uint8Array(totalPixels)
+  let fgCount = 0
+  for (let i = 0; i < totalPixels; i++) {
+    binaryMask[i] = alpha[i] > 128 ? 1 : 0
+    if (binaryMask[i]) fgCount++
+  }
+
+  // 2. 形态学闭运算（先膨胀后腐蚀）：填充前景中的小空洞
+  if (closeRadius > 0 && fgCount > 0) {
+    const dilated = separableDilate(binaryMask, w, h, closeRadius)
+    const closed = separableErode(dilated, w, h, closeRadius)
+    // 将闭运算后"新出现"的前景像素 alpha 值提升
+    for (let i = 0; i < totalPixels; i++) {
+      if (binaryMask[i] === 0 && closed[i] === 1) {
+        // 原本是背景/空洞，闭运算后变为前景 → 提高其 alpha
+        alpha[i] = Math.min(255, alpha[i] + 200)
+      }
+    }
+  }
+
+  // 3. 形态学开运算（先腐蚀后膨胀）：去除孤立噪点
+  if (openRadius > 0 && fgCount > 0) {
+    const eroded = separableErode(binaryMask, w, h, openRadius)
+    const opened = separableDilate(eroded, w, h, openRadius)
+    for (let i = 0; i < totalPixels; i++) {
+      if (binaryMask[i] === 1 && opened[i] === 0) {
+        // 原本是前景噪点，开运算后移除 → 降低 alpha
+        alpha[i] = 0
+      }
+    }
+  }
+
+  // 写回像素
+  for (let i = 0; i < totalPixels; i++) {
+    pixels[i * 4 + 3] = alpha[i]
+  }
+
+  const resultCanvas = document.createElement('canvas')
+  resultCanvas.width = w
+  resultCanvas.height = h
+  const resultCtx = resultCanvas.getContext('2d')
+  resultCtx.putImageData(imageData, 0, 0)
+  return resultCanvas
+}
+
+/**
+ * 可分离膨胀（水平+垂直两次pass），比二维核更高效
+ */
+function separableDilate(mask, w, h, radius) {
+  const temp = new Uint8Array(w * h)
+  // Horizontal pass
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (mask[y * w + x]) {
+        const left = Math.max(0, x - radius)
+        const right = Math.min(w - 1, x + radius)
+        for (let nx = left; nx <= right; nx++) {
+          temp[y * w + nx] = 1
+        }
+      }
+    }
+  }
+  const result = new Uint8Array(w * h)
+  // Vertical pass
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (temp[y * w + x]) {
+        const top = Math.max(0, y - radius)
+        const bottom = Math.min(h - 1, y + radius)
+        for (let ny = top; ny <= bottom; ny++) {
+          result[ny * w + x] = 1
+        }
+      }
+    }
+  }
+  return result
+}
+
+/**
+ * 可分离腐蚀
+ */
+function separableErode(mask, w, h, radius) {
+  const temp = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const left = Math.max(0, x - radius)
+      const right = Math.min(w - 1, x + radius)
+      let allFg = true
+      for (let nx = left; nx <= right; nx++) {
+        if (!mask[y * w + nx]) { allFg = false; break }
+      }
+      if (allFg) temp[y * w + x] = 1
+    }
+  }
+  const result = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const top = Math.max(0, y - radius)
+      const bottom = Math.min(h - 1, y + radius)
+      let allFg = true
+      for (let ny = top; ny <= bottom; ny++) {
+        if (!temp[ny * w + x]) { allFg = false; break }
+      }
+      if (allFg) result[y * w + x] = 1
+    }
+  }
+  return result
+}
+
+/**
+ * 颜色去污染 - 消除半透明边缘的背景色残留
+ * 对标 BiRefNet/RMBG-2 后处理：半透明边缘像素中混入了原图背景色，
+ * 直接合成到新背景时会出现白边/灰边，需要先"去污染"
+ * @param {HTMLCanvasElement} fgCanvas - 透明前景画布
+ * @param {object} assumedBg - 假设的原图背景色 {r, g, b}，默认浅灰白
+ * @returns {HTMLCanvasElement} 去污染后的画布
+ */
+function decontaminateEdgeColors(fgCanvas, assumedBg = { r: 240, g: 240, b: 240 }) {
+  const w = fgCanvas.width
+  const h = fgCanvas.height
+  const ctx = fgCanvas.getContext('2d')
+  const imageData = ctx.getImageData(0, 0, w, h)
+  const pixels = imageData.data
+  const totalPixels = w * h
+
+  for (let i = 0; i < totalPixels; i++) {
+    const idx = i * 4
+    const alpha = pixels[idx + 3]
+
+    // 只处理半透明边缘（alpha 在 20~240 之间）
+    if (alpha > 20 && alpha < 240) {
+      const a = alpha / 255
+
+      // 假设原图背景为浅色，按比例从前景色中减去背景污染
+      // 公式：foreground_clean = (observed - (1-alpha)*background) / alpha
+      // 钳制到有效范围
+      const r = Math.round(Math.max(0, Math.min(255,
+        (pixels[idx] - (1 - a) * assumedBg.r) / a)))
+      const g = Math.round(Math.max(0, Math.min(255,
+        (pixels[idx + 1] - (1 - a) * assumedBg.g) / a)))
+      const b = Math.round(Math.max(0, Math.min(255,
+        (pixels[idx + 2] - (1 - a) * assumedBg.b) / a)))
+
+      pixels[idx] = r
+      pixels[idx + 1] = g
+      pixels[idx + 2] = b
+    }
+  }
+
+  const resultCanvas = document.createElement('canvas')
+  resultCanvas.width = w
+  resultCanvas.height = h
+  const resultCtx = resultCanvas.getContext('2d')
+  resultCtx.putImageData(imageData, 0, 0)
+  return resultCanvas
+}
+
+/**
  * 步骤3: 合成背景色 - 将透明人像合成到纯色背景上
+ * 包含 Alpha 精修 + 颜色去污染 + 边缘羽化的完整管线
  * @param {HTMLCanvasElement} fgCanvas - 前景画布（含alpha通道）
  * @param {object} bgColor - 背景色 {r, g, b}
  * @param {number} feathering - 羽化程度 0-5
@@ -309,128 +840,132 @@ export function compositeWithBackground(fgCanvas, bgColor, feathering = 2) {
   const w = fgCanvas.width
   const h = fgCanvas.height
 
+  // 1. Alpha 通道形态学精修（填充空洞）
+  let processedCanvas = refineAlphaMatte(fgCanvas, {
+    closeRadius: 4,
+    openRadius: 1,
+  })
+
+  // 2. 颜色去污染（消除半透明边缘的白边残留）
+  processedCanvas = decontaminateEdgeColors(processedCanvas, {
+    r: 240, g: 240, b: 240,
+  })
+
+  // 3. 边缘羽化（可选）
+  if (feathering > 0) {
+    processedCanvas = applyEdgeFeathering(processedCanvas, feathering)
+  }
+
+  // 4. 合成到纯色背景
   const resultCanvas = document.createElement('canvas')
   resultCanvas.width = w
   resultCanvas.height = h
   const ctx = resultCanvas.getContext('2d')
 
-  // 1. 填充纯色背景
   ctx.fillStyle = `rgb(${bgColor.r},${bgColor.g},${bgColor.b})`
   ctx.fillRect(0, 0, w, h)
 
-  // 2. 可选羽化处理：对前景alpha通道做模糊
-  if (feathering > 0) {
-    const featheredCanvas = applyFeathering(fgCanvas, feathering)
-    ctx.drawImage(featheredCanvas, 0, 0)
-  } else {
-    ctx.drawImage(fgCanvas, 0, 0)
-  }
+  ctx.drawImage(processedCanvas, 0, 0)
 
   return resultCanvas
 }
 
 /**
- * 对前景进行边缘羽化处理
- * 使用 Canvas filter 的 blur 来模糊 alpha 通道边缘
+ * 边缘羽化 - 只对真人像边缘区域做柔和过渡，避免全图模糊
  * @param {HTMLCanvasElement} srcCanvas
- * @param {number} radius - 羽化半径 0-5
+ * @param {number} radius - 羽化半径 1-5
  * @returns {HTMLCanvasElement}
  */
-function applyFeathering(srcCanvas, radius) {
+function applyEdgeFeathering(srcCanvas, radius) {
   const w = srcCanvas.width
   const h = srcCanvas.height
-
-  // 先提取alpha通道边缘区域
-  const srcCtx = srcCanvas.getContext('2d')
-  const srcData = srcCtx.getImageData(0, 0, w, h)
+  const ctx = srcCanvas.getContext('2d')
+  const srcData = ctx.getImageData(0, 0, w, h)
   const srcPixels = srcData.data
+  const totalPixels = w * h
 
-  // 创建边缘蒙版：只对前景/背景边界区域做模糊
-  const edgeMask = new Uint8Array(w * h)
-  const threshold = 10 // alpha阈值，用于检测边缘
-
+  // 找到所有边缘像素（alpha 在过渡区间的像素及其邻域）
+  const edgeMask = new Uint8Array(totalPixels)
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const idx = (y * w + x) * 4
-      const alpha = srcPixels[idx + 3]
-      // 检测是否是边缘像素（alpha在0~255之间的过渡区域）
-      if (alpha > threshold && alpha < 255 - threshold) {
-        edgeMask[y * w + x] = 1
+      const idx = y * w + x
+      const alpha = srcPixels[idx * 4 + 3]
+      if (alpha > 5 && alpha < 250) {
+        edgeMask[idx] = 1
       }
     }
   }
 
-  // 扩展边缘蒙版（膨胀操作，使羽化区域更宽）
-  const blurRadius = radius
-  const expandedMask = dilateMask(edgeMask, w, h, blurRadius * 2)
+  // 扩展边缘区域
+  const expandedMask = separableDilate(edgeMask, w, h, radius)
 
-  // 使用 Canvas blur 做高斯模糊
-  const blurCanvas = document.createElement('canvas')
-  blurCanvas.width = w
-  blurCanvas.height = h
-  const blurCtx = blurCanvas.getContext('2d')
-  blurCtx.filter = `blur(${radius}px)`
-  blurCtx.drawImage(srcCanvas, 0, 0)
-  blurCtx.filter = 'none'
+  // 对 alpha 通道在边缘区域做盒式滤波（近似羽化）
+  const smoothedAlpha = new Float32Array(totalPixels)
 
-  // 取模糊后的像素
-  const blurData = blurCtx.getImageData(0, 0, w, h)
-  const blurPixels = blurData.data
+  // 先用原始 alpha 初始化
+  for (let i = 0; i < totalPixels; i++) {
+    smoothedAlpha[i] = srcPixels[i * 4 + 3]
+  }
 
-  // 混合：边缘区域用模糊后的alpha，非边缘区域用原始alpha
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x
+      if (!expandedMask[idx]) continue
+
+      // 盒式滤波采样邻域 alpha
+      let sum = 0
+      let count = 0
+      const yMin = Math.max(0, y - radius)
+      const yMax = Math.min(h - 1, y + radius)
+      const xMin = Math.max(0, x - radius)
+      const xMax = Math.min(w - 1, x + radius)
+
+      for (let ny = yMin; ny <= yMax; ny++) {
+        for (let nx = xMin; nx <= xMax; nx++) {
+          sum += srcPixels[(ny * w + nx) * 4 + 3]
+          count++
+        }
+      }
+
+      smoothedAlpha[idx] = Math.round(sum / count)
+    }
+  }
+
+  // 写回
+  const resultData = ctx.createImageData(w, h)
+  const resultPixels = resultData.data
+  for (let i = 0; i < totalPixels; i++) {
+    const idx = i * 4
+    resultPixels[idx] = srcPixels[idx]
+    resultPixels[idx + 1] = srcPixels[idx + 1]
+    resultPixels[idx + 2] = srcPixels[idx + 2]
+    resultPixels[idx + 3] = Math.round(smoothedAlpha[i])
+  }
+
   const resultCanvas = document.createElement('canvas')
   resultCanvas.width = w
   resultCanvas.height = h
   const resultCtx = resultCanvas.getContext('2d')
-  const resultData = resultCtx.createImageData(w, h)
-  const resultPixels = resultData.data
-
-  for (let i = 0; i < w * h; i++) {
-    const idx = i * 4
-    resultPixels[idx] = srcPixels[idx]       // R
-    resultPixels[idx + 1] = srcPixels[idx + 1] // G
-    resultPixels[idx + 2] = srcPixels[idx + 2] // B
-
-    if (expandedMask[i]) {
-      // 边缘区域：使用模糊后的alpha
-      resultPixels[idx + 3] = blurPixels[idx + 3]
-    } else {
-      // 非边缘区域：使用原始alpha
-      resultPixels[idx + 3] = srcPixels[idx + 3]
-    }
-  }
-
   resultCtx.putImageData(resultData, 0, 0)
   return resultCanvas
-}
-
-/**
- * 膨胀蒙版
- */
-function dilateMask(mask, w, h, radius) {
-  const result = new Uint8Array(w * h)
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (mask[y * w + x]) {
-        for (let dy = -radius; dy <= radius; dy++) {
-          for (let dx = -radius; dx <= radius; dx++) {
-            const nx = x + dx
-            const ny = y + dy
-            if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-              result[ny * w + nx] = 1
-            }
-          }
-        }
-      }
-    }
-  }
-  return result
 }
 
 /**
  * 完整的证件照生成流程
  * @param {File} imageFile - 原始图片文件
  * @param {object} options - 配置选项
+ * @param {number} [options.width=295] - 输出宽度
+ * @param {number} [options.height=413] - 输出高度
+ * @param {string} [options.background='white'] - 背景色预设
+ * @param {string} [options.customColor='#FFFFFF'] - 自定义背景色
+ * @param {number} [options.feathering=2] - 边缘羽化程度 0-5
+ * @param {string} [options.outputFormat='jpeg'] - 输出格式 jpeg|png
+ * @param {string} [options.modelType='modnet'] - 抠图模型类型 modnet|birefnet
+ * @param {string} [options.modelUrl] - 自定义模型下载 URL
+ * @param {File|ArrayBuffer} [options.modelFile] - 本地模型文件（优先于 modelUrl）
+ * @param {File|ArrayBuffer} [options.faceModelFile] - 本地 YuNet 人脸检测模型文件
+ * @param {boolean} [options.alignFace=true] - 是否启用人脸矫正
+ * @param {Function} [options.onProgress] - 进度回调 ({stage, progress})
  * @returns {Promise<{dataUrl: string, base64: string, width: number, height: number}>}
  */
 export async function generateIDPhoto(imageFile, options = {}) {
@@ -441,25 +976,52 @@ export async function generateIDPhoto(imageFile, options = {}) {
     customColor = '#FFFFFF',
     feathering = 2,
     outputFormat = 'jpeg',
+    modelType = 'modnet',
+    modelUrl,
+    modelFile,
+    faceModelFile,
+    alignFace = true,
     onProgress,
   } = options
 
-  // 1. AI抠图
-  if (onProgress) onProgress({ stage: 'removing_bg', progress: 0 })
-  const transparentImg = await removeImageBackground(imageFile, (p) => {
-    if (onProgress) onProgress({ stage: 'removing_bg', progress: p * 0.6 })
-  })
+  // 1. 确保模型已加载（含 YuNet 人脸检测模型）
+  //    优先级：本地文件 > 自定义URL > 默认ModelScope地址
+  if (onProgress) onProgress({ stage: 'loading_model', progress: 0 })
+  const modelLoadProgress = (p, stage) => {
+    if (onProgress) {
+      onProgress({
+        stage: stage === 'downloading_model' ? 'downloading_model' : 'loading_model',
+        progress: p * 0.3, // 模型加载占前30%
+      })
+    }
+  }
 
-  // 2. 智能裁剪缩放
-  if (onProgress) onProgress({ stage: 'cropping', progress: 0.6 })
+  if (modelFile) {
+    // 从本地文件加载模型（无需网络下载）
+    await ensureModelLoadedFromFile(modelType, modelFile, faceModelFile, modelLoadProgress)
+  } else {
+    // 从 URL 下载加载模型
+    await ensureModelLoaded(modelType, modelUrl, modelLoadProgress)
+  }
+
+  // 2. AI抠图（内部含 YuNet 人脸检测 + 旋转矫正 + 抠图推理）
+  if (onProgress) onProgress({ stage: 'removing_bg', progress: 0.3 })
+  const transparentImg = await removeImageBackground(imageFile, (p) => {
+    if (onProgress) {
+      onProgress({ stage: 'removing_bg', progress: 0.3 + p * 0.35 })
+    }
+  }, { modelType, alignFace })
+
+  // 3. 智能裁剪缩放
+  if (onProgress) onProgress({ stage: 'cropping', progress: 0.65 })
   const croppedCanvas = smartCropAndResize(transparentImg, width, height)
 
-  // 3. 合成背景色
+  // 4. 合成背景色
   if (onProgress) onProgress({ stage: 'compositing', progress: 0.8 })
   const bgColor = resolveBgColor(background, customColor)
   const resultCanvas = compositeWithBackground(croppedCanvas, bgColor, feathering)
 
-  // 4. 导出结果
+  // 5. 导出结果
   if (onProgress) onProgress({ stage: 'encoding', progress: 0.9 })
   const mimeType = outputFormat === 'png' ? 'image/png' : 'image/jpeg'
   const quality = outputFormat === 'png' ? undefined : 0.95

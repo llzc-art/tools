@@ -103,6 +103,7 @@
           <GoToJsonTool v-else-if="currentTool === 'go-to-json'" />
           <IDPhotoTool v-else-if="currentTool === 'id-photo'" />
           <DDLParserTool v-else-if="currentTool === 'ddl-parser'" />
+          <ArticleTool v-else-if="currentTool === 'article'" />
         </div>
       </main>
     </div>
@@ -183,6 +184,7 @@ import JavaToJsonTool from './components/JavaToJsonTool.vue'
 import GoToJsonTool from './components/GoToJsonTool.vue'
 import IDPhotoTool from './components/IDPhotoTool.vue'
 import DDLParserTool from './components/DDLParserTool.vue'
+import ArticleTool from './components/ArticleTool.vue'
 
 const currentTool = ref(localStorage.getItem('last-tool') || 'timestamp')
 const searchQuery = ref('')
@@ -263,6 +265,13 @@ const categories = [
       { id: 'excel-to-md', name: 'Excel转MD', icon: '📊' },
       { id: 'pdf-to-md', name: 'PDF转MD', icon: '📑' },
       { id: 'markdown', name: 'Markdown预览', icon: '📝' },
+    ]
+  },
+  {
+    id: 'content',
+    label: '内容创作',
+    tools: [
+      { id: 'article', name: '文章写作与发布', icon: '📰' },
     ]
   },
   {

@@ -104,10 +104,87 @@
           <div class="form-group">
             <label>处理引擎</label>
             <select v-model="processMode" class="input-select">
-              <option value="frontend">前端AI抠图（推荐，精度高）</option>
+              <option value="frontend">前端AI抠图（推荐）</option>
               <option value="backend">后端算法（快速，无需下载模型）</option>
             </select>
-            <p class="form-hint" v-if="processMode === 'frontend'">首次使用需下载AI模型（约30MB），之后会缓存</p>
+          </div>
+          <div class="form-group" v-if="processMode === 'frontend'">
+            <label>抠图模型</label>
+            <select v-model="modelType" class="input-select">
+              <option v-for="m in modelOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
+            </select>
+            <p class="form-hint">{{ currentModelDesc }}</p>
+          </div>
+          <div class="form-group" v-if="processMode === 'frontend'">
+            <label>模型来源</label>
+            <select v-model="modelSource" class="input-select" @change="onModelSourceChange">
+              <option value="remote">在线下载（ModelScope）</option>
+              <option value="local">本地文件加载</option>
+            </select>
+          </div>
+          <div class="form-group" v-if="processMode === 'frontend' && modelSource === 'remote'">
+            <label>模型下载地址（可选）</label>
+            <input
+              v-model="customModelUrl"
+              type="text"
+              class="input-text"
+              :placeholder="currentModelPlaceholder"
+            />
+            <p class="form-hint">
+              留空则自动从 ModelScope（魔搭社区）下载。如下载失败，可<strong>自行托管模型</strong>后填入地址
+            </p>
+          </div>
+          <div class="form-group" v-if="processMode === 'frontend' && modelSource === 'local'">
+            <label>抠图模型文件（.onnx）</label>
+            <div class="local-file-row">
+              <input
+                ref="modelFileInput"
+                type="file"
+                accept=".onnx"
+                @change="onModelFileSelect"
+                style="display: none"
+              />
+              <button class="btn btn-outline btn-sm" @click="triggerModelFileSelect">
+                📁 选择文件
+              </button>
+              <span class="file-name" :class="{ 'file-set': !!localModelFile }">
+                {{ localModelFile ? localModelFile.name : '未选择文件' }}
+              </span>
+            </div>
+            <p class="form-hint">
+              选择本地下载好的 <strong>.onnx</strong> 模型文件，跳过网络下载
+            </p>
+          </div>
+          <div class="form-group" v-if="processMode === 'frontend' && modelSource === 'local'">
+            <label>SCRFD-500m 人脸检测模型（可选，.onnx，DamoFD 同源）</label>
+            <div class="local-file-row">
+              <input
+                ref="faceModelFileInput"
+                type="file"
+                accept=".onnx"
+                @change="onFaceModelFileSelect"
+                style="display: none"
+              />
+              <button class="btn btn-outline btn-sm" @click="triggerFaceModelFileSelect">
+                📁 选择文件
+              </button>
+              <span class="file-name" :class="{ 'file-set': !!localFaceModelFile }">
+                {{ localFaceModelFile ? localFaceModelFile.name : '未选择（将从在线下载）' }}
+              </span>
+            </div>
+            <p class="form-hint">
+              可选。不选则自动从在线下载 SCRFD-500m 模型（~2.5MB）
+            </p>
+          </div>
+          <div class="form-group" v-if="processMode === 'frontend'">
+            <label>人脸矫正</label>
+            <select v-model="alignFace" class="input-select">
+              <option :value="true">启用 SCRFD-500m 人脸检测+旋转矫正（推荐）</option>
+              <option :value="false">关闭（跳过旋转矫正，速度更快）</option>
+            </select>
+            <p class="form-hint">
+              基于 SCRFD-500m 检测人脸 5 关键点，矫正倾斜头部。模型仅 ~2.5MB，对加载速度几乎无影响
+            </p>
           </div>
           <div class="form-group">
             <label>输出格式</label>
@@ -233,7 +310,11 @@
 <script setup>
 import { ref, computed, inject } from 'vue'
 import { apiPost } from '../api.js'
-import { generateIDPhoto, generatePrintLayout as generatePrintLayoutFrontend } from '../idphotoProcessor.js'
+import { 
+  generateIDPhoto, 
+  generatePrintLayout as generatePrintLayoutFrontend,
+  MODEL_CONFIGS,
+} from '../idphotoProcessor.js'
 
 const showToast = inject('showToast')
 
@@ -273,6 +354,28 @@ const backgroundOptions = [
 const outputFormat = ref('jpeg')
 const feathering = ref(2)
 
+// 模型设置
+const modelType = ref('modnet')
+const customModelUrl = ref('')
+const alignFace = ref(true)
+const modelSource = ref('remote') // 'remote' = 在线下载, 'local' = 本地文件
+const localModelFile = ref(null)       // 本地抠图模型文件
+const localFaceModelFile = ref(null)   // 本地 SCRFD-500m 人脸检测模型文件（可选，DamoFD 同源）
+const modelFileInput = ref(null)
+const faceModelFileInput = ref(null)
+const modelOptions = Object.entries(MODEL_CONFIGS).map(([value, config]) => ({
+  value,
+  label: config.label,
+  desc: config.desc,
+}))
+const currentModelDesc = computed(() => {
+  return MODEL_CONFIGS[modelType.value]?.desc || ''
+})
+const currentModelPlaceholder = computed(() => {
+  const cfg = MODEL_CONFIGS[modelType.value]
+  return cfg?.urls?.[0] || '请输入模型文件的直链下载地址'
+})
+
 // 生成结果
 const canvas = ref(null)
 const generatedUrl = ref('')
@@ -296,6 +399,9 @@ const previewStyle = computed(() => ({
 
 // 进度文案映射
 const stageLabels = {
+  downloading_model: '下载模型中',
+  loading_model: '加载模型中',
+  face_detect: '人脸检测中',
   removing_bg: 'AI 抠图中',
   cropping: '智能裁剪中',
   compositing: '合成背景中',
@@ -372,6 +478,45 @@ function applyPreset() {
   }
 }
 
+// 本地模型文件选择
+function triggerModelFileSelect() {
+  modelFileInput.value?.click()
+}
+
+function onModelFileSelect(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.onnx')) {
+    showToast('请选择 .onnx 格式的模型文件')
+    return
+  }
+  localModelFile.value = file
+  showToast(`已选择抠图模型: ${file.name}`)
+}
+
+function triggerFaceModelFileSelect() {
+  faceModelFileInput.value?.click()
+}
+
+function onFaceModelFileSelect(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.onnx')) {
+    showToast('请选择 .onnx 格式的模型文件')
+    return
+  }
+  localFaceModelFile.value = file
+  showToast(`已选择人脸检测模型(SCRFD-500m): ${file.name}`)
+}
+
+// 切换模型来源时清除已选文件
+function onModelSourceChange() {
+  if (modelSource.value === 'remote') {
+    localModelFile.value = null
+    localFaceModelFile.value = null
+  }
+}
+
 async function generatePhoto() {
   if (!selectedFile.value) return
 
@@ -407,6 +552,12 @@ async function generatePhoto() {
 
 // 前端 AI 抠图流程
 async function generatePhotoFrontend() {
+  // 本地文件模式校验
+  if (modelSource.value === 'local' && !localModelFile.value) {
+    showToast('请先选择本地抠图模型文件（.onnx）')
+    return
+  }
+
   const result = await generateIDPhoto(selectedFile.value, {
     width: photoWidth.value,
     height: photoHeight.value,
@@ -414,6 +565,11 @@ async function generatePhotoFrontend() {
     customColor: customColor.value,
     feathering: feathering.value,
     outputFormat: outputFormat.value,
+    modelType: modelType.value,
+    modelUrl: modelSource.value === 'remote' ? (customModelUrl.value || undefined) : undefined,
+    modelFile: modelSource.value === 'local' ? localModelFile.value : undefined,
+    faceModelFile: modelSource.value === 'local' ? (localFaceModelFile.value || undefined) : undefined,
+    alignFace: alignFace.value,
     onProgress: ({ stage, progress }) => {
       progressStage.value = stage
       progressPercent.value = Math.round(progress * 100)
@@ -827,6 +983,33 @@ function downloadPrintLayout() {
   color: var(--text-secondary);
   margin-top: 0.3rem;
   margin-bottom: 0;
+}
+
+.local-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-sm {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.file-name {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.file-name.file-set {
+  color: var(--primary);
+  font-weight: 500;
 }
 
 @media (max-width: 768px) {

@@ -177,6 +177,19 @@ func registerRoutes() map[string]fasthttp.RequestHandler {
 	// DDL 解析工具
 	routes["/api/ddl/parse"] = handler.DDLParse
 
+	// 文章写作和发布工具
+	routes["/api/article/list"] = handler.ArticleList
+	routes["/api/article/get"] = handler.ArticleGet
+	routes["/api/article/create"] = handler.ArticleCreate
+	routes["/api/article/update"] = handler.ArticleUpdate
+	routes["/api/article/delete"] = handler.ArticleDelete
+	routes["/api/article/channel/list"] = handler.ArticleChannelList
+	routes["/api/article/channel/create"] = handler.ArticleChannelCreate
+	routes["/api/article/channel/update"] = handler.ArticleChannelUpdate
+	routes["/api/article/channel/delete"] = handler.ArticleChannelDelete
+	routes["/api/article/publish"] = handler.ArticlePublish
+	routes["/api/article/publish/logs"] = handler.ArticlePublishLogs
+
 	return routes
 }
 
