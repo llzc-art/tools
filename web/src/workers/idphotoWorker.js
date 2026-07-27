@@ -2,7 +2,7 @@
  * 证件照抠图 WebWorker
  *
  * 基于 onnxruntime-web 实现完整的前端证件照抠图流水线：
- *   1. SCRFD-500m 人脸检测（5关键点，DamoFD 同源替代 YuNet）→ 计算双眼连线角度
+ *   1. SCRFD-10G-BNKPS 人脸检测（5关键点）→ 计算双眼连线角度
  *   2. 旋转矫正 → 使双眼水平
  *   3. MODNet / BiRefNet 人像抠图 → 生成透明 Alpha 蒙版
  *
@@ -131,9 +131,29 @@ async function downloadModel(urls) {
 
 /**
  * 从单个 URL 流式下载模型
+ *
+ * 特殊处理：ModelScope 上的大模型使用 Git LFS 存储，
+ *           直接 fetch URL 返回的是 HTML 重定向页（包含 `<a href="...">Found</a>`），
+ *           需要从中提取真实 LFS CDN 链接后再次下载。
  */
 async function downloadFromUrl(url) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(30000) })
+  let actualUrl = url
+  let response = await fetch(actualUrl, { signal: AbortSignal.timeout(30000) })
+
+  // 检查是否是 ModelScope LFS HTML 重定向页
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('text/html')) {
+    const html = await response.text()
+    // 提取 `<a href="...">Found</a>` 中的真实链接
+    const m = html.match(/<a\s+href=["']([^"']+)["']\s*>[^<]*Found<\/a>/i)
+    if (m && m[1]) {
+      const realUrl = m[1].replace(/&amp;/g, '&')
+      console.log('[ORT] ModelScope LFS 重定向到:', realUrl)
+      response = await fetch(realUrl, { signal: AbortSignal.timeout(30000) })
+      actualUrl = realUrl
+    }
+  }
+
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
   const contentLength = response.headers.get('content-length')
@@ -159,7 +179,7 @@ async function downloadFromUrl(url) {
     offset += chunk.length
   }
 
-  // 缓存到 IndexedDB
+  // 缓存到 IndexedDB（用原始 URL 作 key，避免 LFS 临时 auth_key 失效）
   try {
     await cacheModel(url, buffer)
   } catch {
@@ -172,7 +192,7 @@ async function downloadFromUrl(url) {
 // ========== ONNX Runtime 初始化 ==========
 
 let ortSession = null      // 抠图模型会话 (MODNet / BiRefNet)
-let yunetSession = null    // 人脸检测模型会话 (SCRFD-500m，DamoFD 同源)
+let yunetSession = null    // 人脸检测模型会话 (SCRFD-10G-BNKPS)
 // 为兼容旧引用同步保留变量名（实际指向 SCRFD 模型）
 let scrfdSession = null
 
@@ -192,6 +212,8 @@ let _ortConfigured = false
  *  - numThreads: 1，单线程（Web Worker 中多线程反而引入 SharedArrayBuffer 复杂度）
  *  - simd:       true，启用 SIMD 加速
  *  - logLevel:   'warning'，避免 ort 内部刷屏
+ *  - enableCpuMemArena: false，关闭 CPU 内存池预分配（默认会预分配 ~1GB，
+ *                在 wasm32 浏览器中容易触发 OOM），改为按需分配
  *
  * @param {typeof import('onnxruntime-web')} ort
  */
@@ -222,6 +244,30 @@ function configureOrt(ort) {
 
   // 5. 关闭冗余的 webgl 日志（用不到）
   if (ort.env.webgl) ort.env.webgl.disableWarnings = true
+
+  // 6. 关闭 CPU 内存池预分配：默认会预分配 ~1GB 内存池，
+  //    在 wasm32 浏览器（Chrome 桌面）容易触发 OOM，错误码约为 0x2D9A0540 (764MB)
+  //    关闭后 ORT 会按需分配内存，代价是频繁分配/释放会慢一点
+  try {
+    ort.env.wasm.enableCpuMemArena = false
+  } catch (err) {
+    // 部分版本 API 名称不同（enableMemoryPattern），忽略
+  }
+
+  // 7. 限制 wasm memory growth：默认不限制 maximum，
+  //    显式限制到 2GB 避免某些浏览器触发 "Cannot enlarge memory arrays" 错误
+  try {
+    ort.env.wasm.maximumMemory = 2 * 1024 * 1024 * 1024  // 2GB
+  } catch (err) {
+    // 部分版本无此 API
+  }
+
+  // 8. 关闭内存模式优化（与 enableCpuMemArena=false 配合，进一步减少预分配）
+  try {
+    ort.env.wasm.enableMemoryPattern = false
+  } catch (err) {
+    // 部分版本无此 API
+  }
 }
 
 /**
@@ -246,23 +292,72 @@ async function importOrt() {
  */
 async function createOrtSession(buffer) {
   const ort = await importOrt()
-  try {
-    return await ort.InferenceSession.create(buffer, {
-      executionProviders: ['wasm'],
-      graphOptimizationLevel: 'all',
-    })
-  } catch (e) {
-    console.warn('[ORT] wasm backend failed, falling back to cpu:', e.message)
-    return await ort.InferenceSession.create(buffer, {
-      executionProviders: ['cpu'],
-      graphOptimizationLevel: 'all',
-    })
+  // 尝试多个 executionProviders 顺序：wasm → cpu
+  // graphOptimizationLevel 选用 'basic'：
+  //   - 'all' / 'extended' 会做算子融合、layout 转换，对 DynamicQuantizeLinear
+  //     等动态算子可能不兼容，导致 wasm 端 OOM
+  //   - 'basic' 只做常量折叠等最基础优化，最兼容但速度略慢
+  const providerChain = ['wasm', 'cpu']
+  let lastError = null
+  for (const ep of providerChain) {
+    try {
+      return await ort.InferenceSession.create(buffer, {
+        executionProviders: [ep],
+        graphOptimizationLevel: 'basic',
+      })
+    } catch (e) {
+      // ONNX Runtime wasm 抛出的可能是 emscripten 原始错误码（数字），
+      // 也可能是 Error 对象，也可能是特殊代理对象——逐个兼容提取信息
+      const typeOf = typeof e
+      const ctorName = e?.constructor?.name
+      const ownKeys = (e && typeof e === 'object')
+        ? Object.getOwnPropertyNames(e)
+        : []
+      // 直接序列化整个对象（避免 JSON.stringify 漏掉原型链上的字段）
+      let serialized = '<unserializable>'
+      try {
+        serialized = JSON.stringify(e, Object.getOwnPropertyNames(e || {}))
+      } catch {}
+
+      const info = {
+        ep,
+        typeOf,
+        ctorName,
+        ownKeys,
+        serialized,
+        // 转十六进制便于看是否是 emscripten 错误码
+        hexValue: typeof e === 'number' ? '0x' + (e >>> 0).toString(16).toUpperCase() : undefined,
+        // String(e) - 这是用户实际看到的错误码
+        toString: (() => { try { return String(e) } catch { return '<unstringifiable>' } })(),
+      }
+      console.warn(`[ORT] ${ep} backend failed (raw):`, info)
+      // 同时打印原始 error 对象（DevTools 可以展开查看）
+      console.warn(`[ORT] ${ep} raw error object:`, e)
+      lastError = e
+    }
   }
+  // 友好的最终错误消息（包含可操作建议）
+  const bufMB = (buffer.byteLength / 1024 / 1024).toFixed(2)
+  const isLargeModel = buffer.byteLength > 500 * 1024 * 1024
+  const hint = isLargeModel
+    ? '\n\n可能原因：模型文件过大（>500MB），浏览器 wasm 内存不足。' +
+      '建议：\n' +
+      '  1. 改用 MODNet（轻量快速，6.6MB）\n' +
+      '  2. 使用 INT8 量化版 BiRefNet（~250MB）\n' +
+      '  3. 通过后端 ONNX Runtime Python 做服务端推理'
+    : '\n\n建议：检查模型文件是否为有效的 ONNX 格式（用 Netron / onnx.checker 验证）'
+  throw new Error(
+    `所有 ONNX Runtime 后端均加载失败（wasm/cpu）。模型大小=${bufMB}MB。` +
+    `最后错误: ${
+      lastError?.message || String(lastError) || '未知错误'
+    }` +
+    hint
+  )
 }
 
 /**
  * 加载 ONNX 模型
- * 同时加载抠图模型和人脸检测模型(SCRFD-500m，DamoFD 同源)
+ * 同时加载抠图模型和人脸检测模型(SCRFD-10G-BNKPS)
  * SCRFD 加载失败不影响抠图功能，仅跳过旋转矫正
  * @param {string[]} urls - 抠图模型候选下载地址列表
  * @param {string[]} [faceModelUrls] - SCRFD 人脸检测模型候选下载地址列表
@@ -288,7 +383,7 @@ async function loadModel(urls, faceModelUrls) {
       const session = await createOrtSession(faceBuffer)
       yunetSession = session
       scrfdSession = session
-      console.log('SCRFD-500m 人脸检测模型加载成功 (DamoFD 同源)')
+      console.log('SCRFD-10G-BNKPS 人脸检测模型加载成功')
     } catch (e) {
       console.warn('SCRFD 加载失败，将跳过旋转矫正:', e.message)
     }
@@ -304,7 +399,7 @@ async function loadModel(urls, faceModelUrls) {
  *       跳过下载流程，适合内网/离线环境或已下载好模型的场景
  *
  * @param {ArrayBuffer} modelBuffer - 抠图模型文件的 ArrayBuffer
- * @param {ArrayBuffer} [faceModelBuffer] - YuNet 人脸检测模型文件的 ArrayBuffer（可选）
+ * @param {ArrayBuffer} [faceModelBuffer] - SCRFD 人脸检测模型文件的 ArrayBuffer（可选）
  */
 async function loadModelFromBuffer(modelBuffer, faceModelBuffer) {
   // ---- 抠图模型 ----
@@ -321,7 +416,7 @@ async function loadModelFromBuffer(modelBuffer, faceModelBuffer) {
       const session = await createOrtSession(faceModelBuffer)
       yunetSession = session
       scrfdSession = session
-      console.log('SCRFD-500m 人脸检测模型（本地文件）加载成功 (DamoFD 同源)')
+      console.log('SCRFD-10G-BNKPS 人脸检测模型（本地文件）加载成功')
     } catch (e) {
       console.warn('SCRFD 本地文件加载失败，将跳过旋转矫正:', e.message)
     }
@@ -408,17 +503,17 @@ function preprocessBiRefNet(imageData, targetSize = 1024) {
   return input
 }
 
-// ========== SCRFD-500m 人脸检测（DamoFD 同源） ==========
+// ========== SCRFD-10G-BNKPS 人脸检测 ==========
 
 /**
  * SCRFD 预处理
- *   - 输入: 原图缩放到 320x320
+ *   - 输入: 原图缩放到 inputSize × inputSize（默认 640，SCRFD-10G 标准）
  *   - 颜色格式: BGR（注意！与 MODNet/BiRefNet 的 RGB 不同）
  *   - 归一化: 原始像素值 [0, 255]，模型内部含归一化层
  *   - 格式: NCHW float32
- *   - 来源: insightface scrfd_500m_bnkps (ykk648/face_lib 镜像)
+ *   - 来源: insightface scrfd_10g_bnkps (CVHub520/modelscope 镜像)
  */
-function preprocessSCRFD(imageData, inputSize = 320) {
+function preprocessSCRFD(imageData, inputSize = 640) {
   const { width, height } = imageData
 
   const canvas = new OffscreenCanvas(inputSize, inputSize)
@@ -497,12 +592,12 @@ function computeIoU(box1, box2) {
 /**
  * SCRFD 后处理 - 解码模型输出，返回人脸检测结果
  *
- * SCRFD 500m 模型有 9 个输出（3 个 stride × 3 个输出）:
+ * SCRFD 10G-BNKPS 模型有 9 个输出（3 个 stride × 3 个输出）:
  *   每个 stride: cls(置信度, channel=1), bbox(bbox, channel=4), kps(关键点, channel=10)
  *   输出形状示例: [1, H*W*2, 1] / [1, H*W*2, 4] / [1, H*W*2, 10]
- *   （其中 2 = num_anchors_per_location，500m 默认 anchor=2）
+ *   （其中 2 = num_anchors_per_location，10G-BNKPS 默认 anchor=2）
  *
- * 关键差异（相对 YuNet）:
+ * 关键差异（SCRFD 自身特性）:
  *   - SCRFD 的 bbox/kps 输出已经预乘 stride 系数
  *   - 因此解码时不再乘以 inputSize/outputSize 缩放比，直接使用即可
  *
@@ -551,7 +646,7 @@ function postprocessSCRFD(results, outputNames, inputSize, origWidth, origHeight
   // SCRFD 模型有 3 个 stride 级别的输出，需要按 stride 分组
   // 同一 stride 的 cls/bbox/kps 张量具有相同 H×W
   // 实现策略：按 H*W 空间尺寸对 9 个张量分组（每组 3 个张量）
-  const grouped = groupByStride(clsOutputs, bboxOutputs, kpsOutputs, strides, anchorsPerLoc)
+  const grouped = groupByStride(clsOutputs, bboxOutputs, kpsOutputs, strides, anchorsPerLoc, inputSize)
   if (!grouped) return null
 
   const detections = []
@@ -588,7 +683,7 @@ function postprocessSCRFD(results, outputNames, inputSize, origWidth, origHeight
         const x2 = (cx + bboxTensor.data[idx * 4 + 2]) * scaleX
         const y2 = (cy + bboxTensor.data[idx * 4 + 3]) * scaleY
 
-        // 关键点解码（顺序：右眼、左眼、鼻、右嘴角、左嘴角，与 YuNet 一致）
+        // 关键点解码（顺序：右眼、左眼、鼻、右嘴角、左嘴角，与原版一致）
         const landmarks = []
         if (kpsTensor) {
           for (let j = 0; j < 5; j++) {
@@ -622,7 +717,7 @@ function postprocessSCRFD(results, outputNames, inputSize, origWidth, origHeight
  * 分组依据：同一 stride 的 cls/bbox/kps 张量具有相同 H*W*2 = data.length / channel
  * 应对各种命名（output_0~8 / cls_8 / stride_8_cls / ...）的鲁棒分组。
  */
-function groupByStride(clsOutputs, bboxOutputs, kpsOutputs, strides, anchorsPerLoc) {
+function groupByStride(clsOutputs, bboxOutputs, kpsOutputs, strides, anchorsPerLoc, inputSize) {
   const grouped = []
 
   for (const stride of strides) {
@@ -636,12 +731,13 @@ function groupByStride(clsOutputs, bboxOutputs, kpsOutputs, strides, anchorsPerL
     // 但我们没法直接拿到 inputSize，只能根据 data.length 反推
 
     // 简化策略：data.length / channel = numLocs * anchorsPerLoc
-    // 对 stride=8: numLocs ≈ 40*40=1600 (320 输入)
-    // 对 stride=16: numLocs ≈ 20*20=400
-    // 对 stride=32: numLocs ≈ 10*10=100
-    // 因此对应的 data.length(1 channel) 应为 3200/800/200
+    // 对 inputSize=640, stride=8:  numLocs = 80*80=6400  → data.length(1ch) = 12800
+    // 对 inputSize=640, stride=16: numLocs = 40*40=1600  → data.length(1ch) = 3200
+    // 对 inputSize=640, stride=32: numLocs = 20*20=400   → data.length(1ch) = 800
+    // （inputSize=320 时对应的 numLocs=1600/400/100，data.length=3200/800/200）
 
-    const expectedClsLen = (320 / stride) * (320 / stride) * anchorsPerLoc
+    const hw = Math.floor(inputSize / stride)
+    const expectedClsLen = hw * hw * anchorsPerLoc
     const expectedBboxLen = expectedClsLen * 4
     const expectedKpsLen = expectedClsLen * 10
 
@@ -666,11 +762,11 @@ function groupByStride(clsOutputs, bboxOutputs, kpsOutputs, strides, anchorsPerL
 async function detectFace(imageData) {
   if (!yunetSession) return null
 
-  const inputSize = 320
+  const inputSize = 640
   const origWidth = imageData.width
   const origHeight = imageData.height
 
-  // 预处理（BGR 格式，320×320）
+  // 预处理（BGR 格式，640×640）
   const inputData = preprocessSCRFD(imageData, inputSize)
 
   const ort = await importOrt()
@@ -681,14 +777,14 @@ async function detectFace(imageData) {
   const feeds = { [inputName]: tensor }
   const results = await yunetSession.run(feeds)
 
-  // 后处理（返回 {bbox, landmarks, score}，landmarks 顺序与 YuNet 一致）
+  // 后处理（返回 {bbox, landmarks, score}）
   return postprocessSCRFD(results, yunetSession.outputNames, inputSize, origWidth, origHeight)
 }
 
 /**
  * 人脸对齐 - 基于双眼关键点计算旋转角度，旋转图像使双眼水平
  *
- * YuNet 关键点顺序: [0]右眼, [1]左眼, [2]鼻尖, [3]右嘴角, [4]左嘴角
+ * SCRFD 关键点顺序: [0]右眼, [1]左眼, [2]鼻尖, [3]右嘴角, [4]左嘴角
  * 旋转角度 = atan2(leftEye.y - rightEye.y, leftEye.x - rightEye.x)
  *
  * @param {OffscreenCanvas} srcCanvas - 源画布
@@ -733,20 +829,28 @@ function alignFaceRotation(srcCanvas, faceDetection) {
 
 /**
  * 从 ONNX 输出生成 alpha 蒙版
- * 输出: [1, 1, H, W] float32, 值范围 [0, 1]
+ * 输出: [1, 1, H, W] float32
+ *   - MODNet 输出已为 [0, 1] 概率值，无需后处理
+ *   - BiRefNet / RMBG-2.0 输出为 raw logits，需要 sigmoid 转换到 [0, 1]
  * 返回: OffscreenCanvas 包含 RGBA 图片（原始颜色 + 推理出的 alpha）
  */
 function postprocessMask(ortOutput, originalImageData, modelType) {
   const outputData = ortOutput.data // Float32Array
   const modelSize = modelType === 'modnet' ? 512 : 1024
-  
+  // MODNet 输出已 sigmoid 过；BiRefNet/RMBG-2.0 输出是 raw logits
+  const needSigmoid = modelType !== 'modnet'
+
   // 创建 alpha mask 的 ImageData
   const maskImageData = new ImageData(modelSize, modelSize)
   const maskPixels = maskImageData.data
-  
+
   // 将模型输出映射到 0-255 alpha 值
   for (let i = 0; i < modelSize * modelSize; i++) {
-    const val = outputData[i]
+    let val = outputData[i]
+    if (needSigmoid) {
+      // sigmoid: 1 / (1 + e^-x)，对负值大输入做数值稳定处理
+      val = val >= 0 ? 1 / (1 + Math.exp(-val)) : Math.exp(val) / (1 + Math.exp(val))
+    }
     // 钳制到 [0, 1]，映射到 [0, 255]
     const alpha = Math.round(Math.max(0, Math.min(1, val)) * 255)
     maskPixels[i * 4] = 255     // R (白色蒙版)
@@ -754,7 +858,7 @@ function postprocessMask(ortOutput, originalImageData, modelType) {
     maskPixels[i * 4 + 2] = 255 // B
     maskPixels[i * 4 + 3] = alpha
   }
-  
+
   return maskImageData
 }
 

@@ -156,7 +156,7 @@
             </p>
           </div>
           <div class="form-group" v-if="processMode === 'frontend' && modelSource === 'local'">
-            <label>SCRFD-500m 人脸检测模型（可选，.onnx，DamoFD 同源）</label>
+            <label>SCRFD-10G-BNKPS 人脸检测模型（可选，.onnx）</label>
             <div class="local-file-row">
               <input
                 ref="faceModelFileInput"
@@ -173,17 +173,17 @@
               </span>
             </div>
             <p class="form-hint">
-              可选。不选则自动从在线下载 SCRFD-500m 模型（~2.5MB）
+              可选。不选则自动从在线下载 SCRFD-10G-BNKPS 模型（~17MB）
             </p>
           </div>
           <div class="form-group" v-if="processMode === 'frontend'">
             <label>人脸矫正</label>
             <select v-model="alignFace" class="input-select">
-              <option :value="true">启用 SCRFD-500m 人脸检测+旋转矫正（推荐）</option>
+              <option :value="true">启用 SCRFD-10G-BNKPS 人脸检测+旋转矫正（推荐）</option>
               <option :value="false">关闭（跳过旋转矫正，速度更快）</option>
             </select>
             <p class="form-hint">
-              基于 SCRFD-500m 检测人脸 5 关键点，矫正倾斜头部。模型仅 ~2.5MB，对加载速度几乎无影响
+              基于 SCRFD-10G-BNKPS 检测人脸 5 关键点，矫正倾斜头部。模型仅 ~17MB，对加载速度影响极小
             </p>
           </div>
           <div class="form-group">
@@ -360,7 +360,7 @@ const customModelUrl = ref('')
 const alignFace = ref(true)
 const modelSource = ref('remote') // 'remote' = 在线下载, 'local' = 本地文件
 const localModelFile = ref(null)       // 本地抠图模型文件
-const localFaceModelFile = ref(null)   // 本地 SCRFD-500m 人脸检测模型文件（可选，DamoFD 同源）
+const localFaceModelFile = ref(null)   // 本地 SCRFD-10G-BNKPS 人脸检测模型文件（可选）
 const modelFileInput = ref(null)
 const faceModelFileInput = ref(null)
 const modelOptions = Object.entries(MODEL_CONFIGS).map(([value, config]) => ({
@@ -506,7 +506,7 @@ function onFaceModelFileSelect(e) {
     return
   }
   localFaceModelFile.value = file
-  showToast(`已选择人脸检测模型(SCRFD-500m): ${file.name}`)
+  showToast(`已选择人脸检测模型(SCRFD-10G-BNKPS): ${file.name}`)
 }
 
 // 切换模型来源时清除已选文件
@@ -558,6 +558,13 @@ async function generatePhotoFrontend() {
     return
   }
 
+  // BiRefNet-RMBG2 (~366MB INT8) 在浏览器 wasm 中无法加载（OOM），
+  // 直接走 Go 后端 ONNX Runtime 推理
+  if (modelType.value === 'birefnet') {
+    showToast('BiRefNet-RMBG2 由后端 ONNX Runtime 推理中（约 10-30 秒）...')
+    return await generatePhotoBackend()
+  }
+
   const result = await generateIDPhoto(selectedFile.value, {
     width: photoWidth.value,
     height: photoHeight.value,
@@ -598,6 +605,9 @@ async function generatePhotoBackend() {
   formData.append('dpi', dpi.value.toString())
   formData.append('output_format', outputFormat.value)
   formData.append('feathering', feathering.value.toString())
+  // BiRefNet-RMBG2 高精发丝级模型：前端 wasm 无法运行 ~350MB 大模型，
+  // 必须走 Go 后端 ONNX Runtime 推理
+  formData.append('use_birefnet', modelType.value === 'birefnet' ? 'true' : 'false')
 
   const response = await fetch('/api/idphoto/process', {
     method: 'POST',

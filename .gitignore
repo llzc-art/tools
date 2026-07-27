@@ -3,6 +3,7 @@ build/
 
 # 前端
 web/dist/
+web/.npm-cache
 web/node_modules/
 
 # 数据文件
@@ -15,8 +16,11 @@ logs/
 .idea/
 .vscode/
 .codebuddy/
+.workbuddy/
+internal/tongji/
 *.swp
 *.swo
+
 
 # OS
 .DS_Store

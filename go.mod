@@ -8,8 +8,10 @@ require (
 	github.com/tsawler/tabula v1.6.6
 	github.com/valyala/fasthttp v1.71.0
 	github.com/xuri/excelize/v2 v2.10.1
+	github.com/yalue/onnxruntime_go v1.31.0
 	github.com/zakahan/docx2md v1.1.1
 	golang.org/x/crypto v0.51.0
+	golang.org/x/image v0.25.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.50.1
@@ -32,7 +34,6 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
-	golang.org/x/image v0.25.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.37.0 // indirect

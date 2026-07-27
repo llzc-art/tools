@@ -40,6 +40,9 @@ func IDPhotoProcess(ctx *fasthttp.RequestCtx) {
 	dpi := getFormInt(ctx, "dpi", 300)
 	outputFormat := getFormValue(ctx, "output_format", "jpeg")
 	feathering := getFormInt(ctx, "feathering", 2)
+	// use_birefnet: 前端是否使用 BiRefNet-RMBG2 高精发丝级模型（服务端推理）
+	// 浏览器 wasm 因 memory 限制无法运行 ~350MB 的大模型，必须走后端
+	useBiRefNet := getFormValue(ctx, "use_birefnet", "") == "true" || getFormValue(ctx, "use_birefnet", "") == "1"
 
 	// 打开文件
 	f, err := file.Open()
@@ -62,6 +65,7 @@ func IDPhotoProcess(ctx *fasthttp.RequestCtx) {
 		DPI:          dpi,
 		OutputFormat: outputFormat,
 		Feathering:   feathering,
+		UseBiRefNet:  useBiRefNet,
 	}
 
 	result, err := service.ProcessIDPhoto(f, file.Filename, config)

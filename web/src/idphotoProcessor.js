@@ -2,13 +2,14 @@
  * 证件照前端处理器
  *
  * 完整前端流程（模型串联逻辑）：
- *   上传原图 → YuNet人脸检测(5关键点) → 旋转矫正 → 人像抠图(MODNet/BiRefNet)
+ *   上传原图 → SCRFD-10G-BNKPS 人脸检测(5关键点) → 旋转矫正
+ *   → 人像抠图(MODNet/BiRefNet-RMBG2)
  *   → Canvas合成纯色背景 → 按国标比例裁切 → 输出300DPI高清PNG
  *
  * 抠图引擎: onnxruntime-web + WebWorker
  *   - MODNet (512x512, INT8~6.6MB): 轻量快速，适合移动端/H5
- *   - BiRefNet-portrait (1024x1024, FP16~490MB): 高精发丝级，适合打印/政务标准
- *   - YuNet (320x320, ~233KB): 人脸检测+5关键点，用于旋转矫正和头部定位
+ *   - BiRefNet-RMBG2 (1024x1024, FP16~490MB): 高精发丝级，适合打印/政务标准
+ *   - SCRFD-10G-BNKPS (320x320, ~17MB): 人脸检测+5关键点，用于旋转矫正和头部定位
  *
  * Canvas API 负责: 裁剪/缩放/合成背景/Alpha精修/颜色去污染
  *
@@ -35,7 +36,7 @@ export const BG_COLORS = {
  *
  * 模型选型遵循参考资料：
  *   - 方案A(移动端): MODNet INT8量化 ~6.6MB，加载快、手机不卡顿
- *   - 方案B(PC端): BiRefNet-portrait FP16 ~490MB，发丝细节完美
+ *   - 方案B(PC端): BiRefNet-RMBG2 FP16 ~490MB，发丝细节完美
  *
  * 可在界面输入自定义 URL 覆盖默认下载地址。
  */
@@ -52,33 +53,45 @@ export const MODEL_CONFIGS = {
     ],
   },
   birefnet: {
-    label: 'BiRefNet-RMBG2（高精发丝级）',
-    desc: '1024px, ~490MB(FP16), 发丝细节完美，适合打印/标准证件照',
+    label: 'BiRefNet-RMBG2-INT8（高精发丝级·推荐）',
+    desc: '1024px, ~366MB(INT8动态量化), 基于 BiRefNet 架构的 RMBG-2.0 INT8 量化版，体积减小 2/3，发丝细节接近 FP16 版，可在浏览器 wasm 中稳定运行',
     size: 1024,
-    // ModelScope: onnx-community/BiRefNet-portrait-ONNX (FP16/FP32)
+    // INT8 动态量化版（DynamicQuantizeLinear 节点）— 浏览器可运行
+    //   - 模型大小：~366MB（FP32 版 ~976MB 太大，浏览器 wasm 内存不足）
+    //   - 输入：float32 [1,3,H,W]，与代码预处理 (ImageNet normalize) 兼容
+    //   - 输出：raw logits，代码后处理 (sigmoid) 兼容
+    //   - 本地上传时请选用同款 model_int8.onnx
     urls: [
-      'https://www.modelscope.cn/models/onnx-community/BiRefNet-portrait-ONNX/resolve/master/onnx/model_fp16.onnx',
-      'https://www.modelscope.cn/models/onnx-community/BiRefNet-portrait-ONNX/resolve/master/onnx/model.onnx',
+      'https://www.modelscope.cn/models/AI-ModelScope/RMBG-2.0/resolve/master/onnx/model_int8.onnx',
       'https://www.modelscope.cn/models/AI-ModelScope/RMBG-2.0/resolve/master/onnx/model.onnx',
+      'https://www.modelscope.cn/models/maple775885/RMBG-2.0/resolve/master/onnx/model.onnx',
     ],
   },
 }
 
 /**
- * YuNet 人脸检测模型配置
+ * SCRFD-10G-BNKPS 人脸检测模型配置
  *
  * 用途：检测人脸 + 5关键点（右眼、左眼、鼻尖、右嘴角、左嘴角）
  *       → 矫正旋转（基于双眼连线角度）→ 计算头部区域
  *
- * 注意：YuNet ONNX 暂未上架 ModelScope，使用 HuggingFace 国内镜像(hf-mirror.com)。
- *       模型仅 ~233KB，对下载速度和流量无影响。
+ * SCRFD（Sample and Computation Redistribution for Efficient Face Detection）
+ * 是 insightface 提出的 SOTA 人脸检测方法，已被 ICLR-2022 接收。
+ * 10G 表示模型计算量约 10G FLOPS，BNKPS = 5 关键点。
+ * 模型仅 ~17MB，国内 ModelScope 镜像下载速度快、稳定。
+ *
+ * 替代 YuNet 的优势：
+ *   - 更大输入尺寸 (640×640) + 多 stride 检测，小脸/大脸/旋转脸都更鲁棒
+ *   - 精度更高，WIDERFace Hard 子集 mAP 达 82.80%
  */
 export const FACE_MODEL_CONFIG = {
-  label: 'YuNet 人脸检测',
-  size: 320,
+  label: 'SCRFD-10G-BNKPS 人脸检测',
+  size: 640,
   urls: [
-    'https://hf-mirror.com/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx',
-    'https://hf-mirror.com/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar_int8.onnx',
+    // 主地址（用户提供，已验证可用）
+    'https://www.modelscope.cn/models/CVHub520/scrfd_10g_bnkps/resolve/master/scrfd_10g_bnkps.onnx',
+    // 备用地址：ykk648/face_lib 镜像（buffalo_l 同源）
+    'https://www.modelscope.cn/models/ykk648/face_lib/resolve/master/det_10g.onnx',
   ],
 }
 
@@ -168,7 +181,7 @@ function handleWorkerMessage(event) {
 
 /**
  * 确保模型已加载到 Worker
- * 同时加载抠图模型和人脸检测模型(YuNet)，YuNet加载失败不影响抠图
+ * 同时加载抠图模型和人脸检测模型(SCRFD)，SCRFD 加载失败不影响抠图
  * @param {string} modelType - 'modnet' | 'birefnet'
  * @param {string} [modelUrl] - 自定义模型 URL
  * @param {Function} [onProgress] - 进度回调 (0~1)
@@ -221,7 +234,7 @@ export async function ensureModelLoaded(modelType = 'modnet', modelUrl, onProgre
       }
     }
 
-    // 同时传递抠图模型和人脸检测模型(YuNet)的下载地址
+    // 同时传递抠图模型和人脸检测模型(SCRFD)的下载地址
     worker.postMessage({
       type: 'loadModel',
       modelType,
@@ -256,7 +269,7 @@ export async function ensureModelLoaded(modelType = 'modnet', modelUrl, onProgre
  *
  * @param {string} modelType - 'modnet' | 'birefnet'（仅用于标记当前加载的模型类型）
  * @param {File|ArrayBuffer} modelFile - 抠图模型文件（.onnx）
- * @param {File|ArrayBuffer} [faceModelFile] - YuNet 人脸检测模型文件（可选，省略则自动从 URL 下载）
+ * @param {File|ArrayBuffer} [faceModelFile] - SCRFD 人脸检测模型文件（可选，省略则自动从 URL 下载）
  * @param {Function} [onProgress] - 进度回调 (0~1)
  * @returns {Promise<void>}
  */
@@ -275,7 +288,7 @@ export async function ensureModelLoadedFromFile(modelType = 'modnet', modelFile,
   // 读取文件为 ArrayBuffer（如果传入的已经是 ArrayBuffer 则直接使用）
   const modelBuffer = modelFile instanceof ArrayBuffer ? modelFile : await modelFile.arrayBuffer()
 
-  // YuNet 模型文件（可选）
+  // SCRFD 模型文件（可选）
   let faceModelBuffer = null
   if (faceModelFile) {
     faceModelBuffer = faceModelFile instanceof ArrayBuffer ? faceModelFile : await faceModelFile.arrayBuffer()
@@ -350,7 +363,7 @@ export function destroyWorker() {
 
 /**
  * 步骤1: AI 抠图 - 通过 WebWorker + onnxruntime-web 移除背景
- * 内部流程：YuNet人脸检测 → 旋转矫正 → MODNet/BiRefNet抠图推理
+ * 内部流程：SCRFD 人脸检测 → 旋转矫正 → MODNet/BiRefNet 抠图推理
  * @param {File|Blob} imageFile - 原始图片文件
  * @param {Function} onProgress - 进度回调 (0~1)
  * @param {object} [options] - { modelType: 'modnet'|'birefnet', alignFace: boolean }
@@ -963,7 +976,7 @@ function applyEdgeFeathering(srcCanvas, radius) {
  * @param {string} [options.modelType='modnet'] - 抠图模型类型 modnet|birefnet
  * @param {string} [options.modelUrl] - 自定义模型下载 URL
  * @param {File|ArrayBuffer} [options.modelFile] - 本地模型文件（优先于 modelUrl）
- * @param {File|ArrayBuffer} [options.faceModelFile] - 本地 YuNet 人脸检测模型文件
+ * @param {File|ArrayBuffer} [options.faceModelFile] - 本地 SCRFD 人脸检测模型文件
  * @param {boolean} [options.alignFace=true] - 是否启用人脸矫正
  * @param {Function} [options.onProgress] - 进度回调 ({stage, progress})
  * @returns {Promise<{dataUrl: string, base64: string, width: number, height: number}>}
@@ -984,7 +997,7 @@ export async function generateIDPhoto(imageFile, options = {}) {
     onProgress,
   } = options
 
-  // 1. 确保模型已加载（含 YuNet 人脸检测模型）
+  // 1. 确保模型已加载（含 SCRFD 人脸检测模型）
   //    优先级：本地文件 > 自定义URL > 默认ModelScope地址
   if (onProgress) onProgress({ stage: 'loading_model', progress: 0 })
   const modelLoadProgress = (p, stage) => {
@@ -1004,7 +1017,7 @@ export async function generateIDPhoto(imageFile, options = {}) {
     await ensureModelLoaded(modelType, modelUrl, modelLoadProgress)
   }
 
-  // 2. AI抠图（内部含 YuNet 人脸检测 + 旋转矫正 + 抠图推理）
+  // 2. AI抠图（内部含 SCRFD 人脸检测 + 旋转矫正 + 抠图推理）
   if (onProgress) onProgress({ stage: 'removing_bg', progress: 0.3 })
   const transparentImg = await removeImageBackground(imageFile, (p) => {
     if (onProgress) {

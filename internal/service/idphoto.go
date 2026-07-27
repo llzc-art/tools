@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -17,6 +18,8 @@ import (
 	"strings"
 
 	"github.com/disintegration/imaging"
+
+	"lelezc.com/tools/internal/onnx"
 )
 
 // IDPhotoConfig 证件照配置
@@ -28,6 +31,11 @@ type IDPhotoConfig struct {
 	DPI         int     `json:"dpi"`
 	OutputFormat string `json:"output_format"` // jpeg, png
 	Feathering  int     `json:"feathering"`   // 边缘羽化程度 0-5
+
+	// UseBiRefNet 是否使用 BiRefNet-RMBG2 服务端推理（默认 false）
+	// 浏览器前端因 wasm memory 限制无法运行 ~350MB 的大模型，故改用 Go 后端
+	// 实现。模型 INT8 量化版 ~366MB，首次调用时自动下载到 data/onnxruntime/models/
+	UseBiRefNet bool `json:"use_birefnet"`
 }
 
 // IDPhotoResult 证件照处理结果
@@ -85,6 +93,20 @@ func ProcessIDPhoto(file multipart.File, filename string, config *IDPhotoConfig)
 	}
 	if targetHeight <= 0 {
 		targetHeight = 413
+	}
+
+	// 如果启用 BiRefNet 服务端推理，先抠出透明背景人像
+	// （浏览器前端因 wasm memory 限制无法运行 ~350MB 的大模型）
+	if config.UseBiRefNet {
+		birefnetResult, err := onnx.RunBiRefNet(img)
+		if err != nil {
+			return nil, fmt.Errorf("BiRefNet 服务端推理失败: %w", err)
+		}
+		// 用 BiRefNet 输出替代原图，后续流程基于透明背景分析
+		img = birefnetResult.MaskImage
+		bounds = img.Bounds()
+		origWidth = bounds.Dx()
+		origHeight = bounds.Dy()
 	}
 
 	// 获取背景色

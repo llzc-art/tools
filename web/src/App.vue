@@ -104,6 +104,28 @@
           <IDPhotoTool v-else-if="currentTool === 'id-photo'" />
           <DDLParserTool v-else-if="currentTool === 'ddl-parser'" />
           <ArticleTool v-else-if="currentTool === 'article'" />
+          <CalculatorTool v-else-if="currentTool === 'calculator'" />
+          <UnitConverterTool v-else-if="currentTool === 'unit-converter'" />
+          <BmiTool v-else-if="currentTool === 'bmi'" />
+          <DateCalcTool v-else-if="currentTool === 'date-calc'" />
+          <CountdownTool v-else-if="currentTool === 'countdown'" />
+          <ColorTool v-else-if="currentTool === 'color-tool'" />
+          <TextStatsTool v-else-if="currentTool === 'text-stats'" />
+          <TextUtilsTool v-else-if="currentTool === 'text-utils'" />
+          <MorseTool v-else-if="currentTool === 'morse'" />
+          <RandomTool v-else-if="currentTool === 'random-tool'" />
+          <WheelTool v-else-if="currentTool === 'wheel'" />
+          <QrGenTool v-else-if="currentTool === 'qr-gen'" />
+          <TtsTool v-else-if="currentTool === 'tts'" />
+          <PwdStrengthTool v-else-if="currentTool === 'pwd-strength'" />
+          <QrDecodeTool v-else-if="currentTool === 'qr-decode'" />
+          <ChartMakerTool v-else-if="currentTool === 'chart-maker'" />
+          <LunarTool v-else-if="currentTool === 'lunar'" />
+          <PinyinTool v-else-if="currentTool === 'pinyin'" />
+          <ChineseConvertTool v-else-if="currentTool === 'chinese-convert'" />
+          <PaletteTool v-else-if="currentTool === 'palette'" />
+          <GradientTool v-else-if="currentTool === 'gradient'" />
+          <FlowchartTool v-else-if="currentTool === 'flowchart'" />
         </div>
       </main>
     </div>
@@ -185,6 +207,28 @@ import GoToJsonTool from './components/GoToJsonTool.vue'
 import IDPhotoTool from './components/IDPhotoTool.vue'
 import DDLParserTool from './components/DDLParserTool.vue'
 import ArticleTool from './components/ArticleTool.vue'
+import CalculatorTool from './components/CalculatorTool.vue'
+import UnitConverterTool from './components/UnitConverterTool.vue'
+import BmiTool from './components/BmiTool.vue'
+import DateCalcTool from './components/DateCalcTool.vue'
+import CountdownTool from './components/CountdownTool.vue'
+import ColorTool from './components/ColorTool.vue'
+import TextStatsTool from './components/TextStatsTool.vue'
+import TextUtilsTool from './components/TextUtilsTool.vue'
+import MorseTool from './components/MorseTool.vue'
+import RandomTool from './components/RandomTool.vue'
+import WheelTool from './components/WheelTool.vue'
+import QrGenTool from './components/QrGenTool.vue'
+import TtsTool from './components/TtsTool.vue'
+import PwdStrengthTool from './components/PwdStrengthTool.vue'
+import QrDecodeTool from './components/QrDecodeTool.vue'
+import ChartMakerTool from './components/ChartMakerTool.vue'
+import LunarTool from './components/LunarTool.vue'
+import PinyinTool from './components/PinyinTool.vue'
+import ChineseConvertTool from './components/ChineseConvertTool.vue'
+import PaletteTool from './components/PaletteTool.vue'
+import GradientTool from './components/GradientTool.vue'
+import FlowchartTool from './components/FlowchartTool.vue'
 
 const currentTool = ref(localStorage.getItem('last-tool') || 'timestamp')
 const searchQuery = ref('')
@@ -314,6 +358,70 @@ const categories = [
       { id: 'feishu-api', name: '飞书API', icon: '🐦' },
       { id: 'cloud-api', name: '云平台API', icon: '☁️' },
       { id: 'wecom-api', name: '企业微信API', icon: '🏢' },
+    ]
+  },
+  {
+    id: 'calc',
+    label: '计算工具',
+    tools: [
+      { id: 'calculator', name: '科学计算器', icon: '🧮' },
+      { id: 'unit-converter', name: '单位换算', icon: '📐' },
+      { id: 'bmi', name: 'BMI计算器', icon: '⚖️' },
+      { id: 'date-calc', name: '日期计算器', icon: '📆' },
+      { id: 'countdown', name: '倒计时', icon: '⏳' },
+    ]
+  },
+  {
+    id: 'color',
+    label: '颜色工具',
+    tools: [
+      { id: 'color-tool', name: '颜色转换', icon: '🎨' },
+      { id: 'palette', name: '调色板生成', icon: '🎨' },
+      { id: 'gradient', name: 'CSS渐变生成', icon: '🌈' },
+    ]
+  },
+  {
+    id: 'text',
+    label: '文本工具',
+    tools: [
+      { id: 'text-stats', name: '字数统计', icon: '🔡' },
+      { id: 'text-utils', name: '文本处理', icon: '🧹' },
+      { id: 'morse', name: '摩斯密码', icon: '📻' },
+      { id: 'pinyin', name: '拼音转换', icon: '🔠' },
+      { id: 'chinese-convert', name: '繁简转换', icon: '🀄' },
+    ]
+  },
+  {
+    id: 'fun',
+    label: '趣味随机',
+    tools: [
+      { id: 'random-tool', name: '随机数/抽签', icon: '🎲' },
+      { id: 'wheel', name: '抽奖转盘', icon: '🎯' },
+    ]
+  },
+  {
+    id: 'life',
+    label: '生活助手',
+    tools: [
+      { id: 'qr-gen', name: '二维码生成', icon: '📱' },
+      { id: 'qr-decode', name: '二维码识别', icon: '📷' },
+      { id: 'tts', name: '文字转语音', icon: '🔊' },
+      { id: 'lunar', name: '农历万年历', icon: '📆' },
+    ]
+  },
+  {
+    id: 'chart',
+    label: '图表可视化',
+    tools: [
+      { id: 'chart-maker', name: '图表生成器', icon: '📊' },
+      { id: 'flowchart', name: '流程图生成', icon: '🔀' },
+    ]
+  },
+  {
+    id: 'password',
+    label: '密码安全',
+    tools: [
+      { id: 'pwd-strength', name: '密码强度检测', icon: '🔐' },
     ]
   },
 ]
